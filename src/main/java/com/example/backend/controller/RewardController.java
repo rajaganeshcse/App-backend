@@ -26,23 +26,25 @@ public class RewardController {
         String uid = decoded.getUid();
 
         Firestore db = FirestoreClient.getFirestore();
-
         DocumentReference userRef =
                 db.collection("users").document(uid);
 
         DocumentSnapshot doc = userRef.get().get();
 
         Long coins = doc.getLong("coins");
+        Long tickets = doc.getLong("tickets");
         Long ads = doc.getLong("daily_ads_count");
 
         if (ads == null) ads = 0L;
+        if (coins == null) coins = 0L;
+        if (tickets == null) tickets = 0L;
 
         // 🚫 Daily limit
         if (ads >= 10) {
             return ResponseEntity.badRequest().body("Daily limit reached");
         }
 
-        // 🚫 Duplicate check
+        // 🚫 Duplicate request check
         Query query = db.collection("transactions")
                 .whereEqualTo("requestId", req.requestId);
 
@@ -50,17 +52,39 @@ public class RewardController {
             return ResponseEntity.badRequest().body("Duplicate request");
         }
 
-        // ✅ Update coins
+        // 🎁 Reward values
+        int coinReward = 10;
+        int ticketReward = 1;
+
+        // ✅ ATOMIC UPDATE (VERY IMPORTANT 🔐)
         userRef.update(
-                "coins", coins + 10,
-                "daily_ads_count", ads + 1
+                "coins", FieldValue.increment(coinReward),
+                "tickets", FieldValue.increment(ticketReward),
+                "daily_ads_count", FieldValue.increment(1)
         );
 
-        // ✅ Save transaction
+        // ✅ COIN HISTORY
+        Map<String, Object> coinDetail = new HashMap<>();
+        coinDetail.put("amount", coinReward);
+        coinDetail.put("type", "ads");
+        coinDetail.put("created_at", FieldValue.serverTimestamp());
+
+        userRef.collection("coinDetails").add(coinDetail);
+
+        // ✅ TICKET HISTORY
+        Map<String, Object> ticketDetail = new HashMap<>();
+        ticketDetail.put("amount", ticketReward);
+        ticketDetail.put("type", "ads");
+        ticketDetail.put("created_at", FieldValue.serverTimestamp());
+
+        userRef.collection("ticketDetails").add(ticketDetail);
+
+        // ✅ GLOBAL TRANSACTION LOG
         Map<String, Object> txn = new HashMap<>();
         txn.put("uid", uid);
-        txn.put("amount", 10);
-        txn.put("type", "ad");
+        txn.put("coins", coinReward);
+        txn.put("tickets", ticketReward);
+        txn.put("type", "ads");
         txn.put("requestId", req.requestId);
         txn.put("time", FieldValue.serverTimestamp());
 

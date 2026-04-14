@@ -44,14 +44,31 @@ public class AuthController {
                 user.put("name", name);
                 user.put("email", email);
 
-                // 🔐 BACKEND CONTROL
+                // 🔐 MAIN BALANCE
                 user.put("coins", 100);
                 user.put("tickets", 10);
-                user.put("walletToken", 10);
+                user.put("walletToken", 1);
 
                 user.put("created_at", FieldValue.serverTimestamp());
 
+                // ✅ SAVE USER
                 ref.set(user);
+
+                // ✅ COIN HISTORY
+                Map<String, Object> coinDetail = new HashMap<>();
+                coinDetail.put("amount", 100);
+                coinDetail.put("type", "welcome_bonus");
+                coinDetail.put("created_at", FieldValue.serverTimestamp());
+
+                ref.collection("coinDetails").add(coinDetail);
+
+                // ✅ TICKET HISTORY
+                Map<String, Object> ticketDetail = new HashMap<>();
+                ticketDetail.put("amount", 10);
+                ticketDetail.put("type", "welcome_bonus");
+                ticketDetail.put("created_at", FieldValue.serverTimestamp());
+
+                ref.collection("ticketDetails").add(ticketDetail);
             }
 
             return ResponseEntity.ok("Success");
