@@ -1,0 +1,64 @@
+package com.example.backend.controller;
+
+import com.example.backend.model.LoginRequest;
+import com.google.cloud.firestore.DocumentReference;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.FieldValue;
+import com.google.cloud.firestore.Firestore;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseToken;
+import com.google.firebase.cloud.FirestoreClient;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api")
+public class AuthController {
+
+    @PostMapping("/auth")
+    public ResponseEntity<?> auth(@RequestBody LoginRequest request) {
+
+        try {
+            FirebaseToken decoded =
+                    FirebaseAuth.getInstance().verifyIdToken(request.token);
+
+            String uid = decoded.getUid();
+            String name = decoded.getName();
+            String email = decoded.getEmail();
+
+            Firestore db = FirestoreClient.getFirestore();
+            DocumentReference ref = db.collection("users").document(uid);
+
+            DocumentSnapshot doc = ref.get().get();
+
+            if (!doc.exists()) {
+
+                Map<String, Object> user = new HashMap<>();
+
+                user.put("uid", uid);
+                user.put("name", name);
+                user.put("email", email);
+
+                // 🔐 BACKEND CONTROL
+                user.put("coins", 100);
+                user.put("tickets", 0);
+                user.put("walletToken", 0);
+
+                user.put("created_at", FieldValue.serverTimestamp());
+
+                ref.set(user);
+            }
+
+            return ResponseEntity.ok("Success");
+
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body("Invalid Token");
+        }
+    }
+}
