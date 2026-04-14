@@ -25,8 +25,7 @@ public class AuthController {
     public ResponseEntity<?> auth(@RequestBody LoginRequest request) {
 
         try {
-            FirebaseToken decoded =
-                    FirebaseAuth.getInstance().verifyIdToken(request.token);
+            FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(request.token);
 
             String uid = decoded.getUid();
             String name = decoded.getName();
