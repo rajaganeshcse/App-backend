@@ -18,12 +18,16 @@ public class FirebaseConfig {
         String projectId = System.getenv("FIREBASE_PROJECT_ID");
         String clientEmail = System.getenv("FIREBASE_CLIENT_EMAIL");
         String privateKey = System.getenv("FIREBASE_PRIVATE_KEY");
+        String clientId = System.getenv("FIREBASE_CLIENT_ID");
+        String privateKeyId = System.getenv("FIREBASE_PRIVATE_KEY_ID");
 
         String json = "{\n" +
                 "  \"type\": \"service_account\",\n" +
                 "  \"project_id\": \"" + projectId + "\",\n" +
+                "  \"private_key_id\": \"" + privateKeyId + "\",\n" +
                 "  \"private_key\": \"" + privateKey + "\",\n" +
-                "  \"client_email\": \"" + clientEmail + "\"\n" +
+                "  \"client_email\": \"" + clientEmail + "\",\n" +
+                "  \"client_id\": \"" + clientId + "\"\n" +
                 "}";
 
         InputStream serviceAccount = new ByteArrayInputStream(json.getBytes());
