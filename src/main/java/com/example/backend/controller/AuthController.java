@@ -47,8 +47,8 @@ public class AuthController {
 
                 // 🔐 BACKEND CONTROL
                 user.put("coins", 100);
-                user.put("tickets", 0);
-                user.put("walletToken", 0);
+                user.put("tickets", 10);
+                user.put("walletToken", 10);
 
                 user.put("created_at", FieldValue.serverTimestamp());
 
