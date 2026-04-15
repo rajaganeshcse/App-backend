@@ -14,10 +14,9 @@ public class SpinController {
 
     private static final int MAX_SPINS = 10;
 
-    @PostMapping("/spin")
-    public SpinResponse spin(
-            @RequestHeader("Authorization") String token,
-            @RequestParam String userId) throws Exception {
+    /* ================= COMMON METHOD ================= */
+
+    private Map<String, Object> getUserSpinData(String userId) throws Exception {
 
         Firestore db = FirestoreClient.getFirestore();
 
@@ -42,6 +41,41 @@ public class SpinController {
             spinCount = 0;
         }
 
+        Map<String, Object> data = new HashMap<>();
+        data.put("spinCount", spinCount);
+        data.put("today", today);
+
+        return data;
+    }
+
+    /* ================= SPIN STATUS ================= */
+
+    @GetMapping("/spin-status")
+    public Map<String, Integer> spinStatus(@RequestParam String userId) throws Exception {
+
+        Map<String, Object> data = getUserSpinData(userId);
+
+        int spinCount = (int) data.get("spinCount");
+
+        int remaining = Math.max(0, MAX_SPINS - spinCount); // ✅ safe
+
+        return Collections.singletonMap("remainingSpins", remaining);
+    }
+
+    /* ================= SPIN ================= */
+
+    @PostMapping("/spin")
+    public SpinResponse spin(
+            @RequestHeader("Authorization") String token,
+            @RequestParam String userId) throws Exception {
+
+        // 🔐 (OPTIONAL) verify token here later
+
+        Map<String, Object> data = getUserSpinData(userId);
+
+        int spinCount = (int) data.get("spinCount");
+        String today = (String) data.get("today");
+
         // ❌ Limit check
         if (spinCount >= MAX_SPINS) {
             return new SpinResponse(0, 0);
@@ -52,12 +86,16 @@ public class SpinController {
         int reward = rewards[new Random().nextInt(rewards.length)];
 
         // 🔥 Update Firebase
+        Firestore db = FirestoreClient.getFirestore();
+
         Map<String, Object> updates = new HashMap<>();
         updates.put("coins", FieldValue.increment(reward));
         updates.put("dailySpinCount", spinCount + 1);
         updates.put("lastSpinDate", today);
 
-        ref.set(updates, SetOptions.merge());
+        db.collection("users")
+                .document(userId)
+                .set(updates, SetOptions.merge());
 
         int remaining = MAX_SPINS - (spinCount + 1);
 
