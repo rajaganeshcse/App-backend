@@ -1,38 +1,66 @@
 package com.example.backend.controller;
 
 import com.example.backend.model.SpinResponse;
-import com.example.backend.service.SpinService;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
+import com.google.cloud.firestore.*;
+import com.google.firebase.cloud.FirestoreClient;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api")
 public class SpinController {
 
-    @Autowired
-    private SpinService spinService;
+    private static final int MAX_SPINS = 10;
 
     @PostMapping("/spin")
-    public ResponseEntity<?> spin(
+    public SpinResponse spin(
             @RequestHeader("Authorization") String token,
-            @RequestParam String userId
-    ) {
+            @RequestParam String userId) throws Exception {
 
-        // 🔐 TODO: Verify Firebase token
+        Firestore db = FirestoreClient.getFirestore();
 
-        if (!spinService.canSpin(userId)) {
-            return ResponseEntity.badRequest().body("Daily limit reached");
+        DocumentReference ref = db.collection("users").document(userId);
+        DocumentSnapshot doc = ref.get().get();
+
+        int spinCount = 0;
+        String lastDate = "";
+
+        if (doc.exists()) {
+            spinCount = doc.getLong("dailySpinCount") != null ?
+                    doc.getLong("dailySpinCount").intValue() : 0;
+
+            lastDate = doc.getString("lastSpinDate") != null ?
+                    doc.getString("lastSpinDate") : "";
         }
 
-        int reward = spinService.generateReward();
+        String today = LocalDate.now().toString();
 
-        // 🔥 UPDATE FIREBASE HERE
-        spinService.addCoinsToFirebase(userId, reward);
+        // 🔄 Reset daily
+        if (!today.equals(lastDate)) {
+            spinCount = 0;
+        }
 
-        spinService.increaseSpin(userId);
+        // ❌ Limit check
+        if (spinCount >= MAX_SPINS) {
+            return new SpinResponse(0, 0);
+        }
 
-        return ResponseEntity.ok(new SpinResponse(reward));
+        // 🎯 Reward
+        int[] rewards = {0, 5, 6, 7, 10};
+        int reward = rewards[new Random().nextInt(rewards.length)];
+
+        // 🔥 Update Firebase
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("coins", FieldValue.increment(reward));
+        updates.put("dailySpinCount", spinCount + 1);
+        updates.put("lastSpinDate", today);
+
+        ref.set(updates, SetOptions.merge());
+
+        int remaining = MAX_SPINS - (spinCount + 1);
+
+        return new SpinResponse(reward, remaining);
     }
 }

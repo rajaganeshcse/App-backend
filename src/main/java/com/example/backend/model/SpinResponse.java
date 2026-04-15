@@ -1,18 +1,11 @@
 package com.example.backend.model;
 
 public class SpinResponse {
+    public int reward;
+    public int remainingSpins;
 
-    private int reward;
-
-    public SpinResponse(int reward) {
+    public SpinResponse(int reward, int remainingSpins) {
         this.reward = reward;
-    }
-
-    public int getReward() {
-        return reward;
-    }
-
-    public void setReward(int reward) {
-        this.reward = reward;
+        this.remainingSpins = remainingSpins;
     }
 }
