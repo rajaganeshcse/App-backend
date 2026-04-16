@@ -27,13 +27,8 @@ public class DailyReset {
                     SetOptions.merge()
             );
         }
-        for (DocumentReference ref : users) {
 
-            ref.set(
-                    Map.of("dailySpinCount", 0),
-                    SetOptions.merge()
-            );
-        }
+
 
         System.out.println("Daily reset done");
 
