@@ -23,7 +23,7 @@ public class DailyReset {
         for (DocumentReference ref : users) {
 
             ref.set(
-                    Map.of("daily_ads_count", 0),
+                    Map.of("daily_ads_count",0,"dailySpinCount", 0),
                     SetOptions.merge()
             );
         }
