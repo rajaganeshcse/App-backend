@@ -103,7 +103,10 @@ public class SpinController {
         coinDetail.put("type", "Daily Ad");
         coinDetail.put("created_at", FieldValue.serverTimestamp());
 
-        db.collection("coinDetails").add(coinDetail);
+        DocumentReference userRef =
+                db.collection("users").document(userId);
+
+        userRef.collection("coinDetails").add(coinDetail);
 
         int remaining = MAX_SPINS - (spinCount + 1);
 
