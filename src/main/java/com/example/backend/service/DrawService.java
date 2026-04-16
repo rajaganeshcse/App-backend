@@ -27,9 +27,13 @@ public class DrawService {
             DocumentSnapshot user = tx.get(userRef).get();
             DocumentSnapshot draw = tx.get(drawRef).get();
 
-            long tickets = user.getLong("tickets");
-            long sold = draw.getLong("soldTickets");
-            long total = draw.getLong("totalTickets");
+            Long ticketsObj = user.getLong("tickets");
+            Long soldObj = draw.getLong("soldTickets");
+            Long totalObj = draw.getLong("totalTickets");
+
+            long tickets = ticketsObj != null ? ticketsObj : 0;
+            long sold = soldObj != null ? soldObj : 0;
+            long total = totalObj != null ? totalObj : 0;
             String status = draw.getString("status");
 
             // 🚫 Anti-cheat
