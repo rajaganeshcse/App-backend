@@ -13,7 +13,7 @@ import java.util.Map;
 public class DrawController {
 
     @Autowired
-    private DrawService drawService;
+    private DrawService service;
 
     @PostMapping("/join")
     public ResponseEntity<?> join(
@@ -21,17 +21,19 @@ public class DrawController {
             @RequestBody Map<String, Object> req) {
 
         try {
+
             String uid = TokenUtil.verify(token);
 
             String drawId = (String) req.get("drawId");
             int ticketCount = (int) req.get("ticketCount");
 
-            drawService.join(drawId, uid, ticketCount);
+            service.join(drawId, uid, ticketCount);
 
-            return ResponseEntity.ok("Joined Successfully");
+            return ResponseEntity.ok(Map.of("message", "Joined"));
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 }

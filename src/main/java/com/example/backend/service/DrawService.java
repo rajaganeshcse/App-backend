@@ -10,109 +10,96 @@ import java.util.*;
 public class DrawService {
 
     @Autowired
-    private Firestore firestore;
+    private Firestore db;
 
     public void join(String drawId, String uid, int ticketCount) throws Exception {
 
-        DocumentReference userRef =
-                firestore.collection("users").document(uid);
-
-        DocumentReference drawRef =
-                firestore.collection("lucky_draws").document(drawId);
+        DocumentReference userRef = db.collection("users").document(uid);
+        DocumentReference drawRef = db.collection("lucky_draws").document(drawId);
 
         CollectionReference ticketRef =
-                firestore.collection("lucky_draw_tickets")
+                db.collection("lucky_draw_tickets")
                         .document(drawId)
                         .collection("tickets");
 
-        firestore.runTransaction(transaction -> {
+        db.runTransaction(tx -> {
 
-            DocumentSnapshot userSnap = transaction.get(userRef).get();
-            DocumentSnapshot drawSnap = transaction.get(drawRef).get();
+            DocumentSnapshot user = tx.get(userRef).get();
+            DocumentSnapshot draw = tx.get(drawRef).get();
 
-            long userTickets = userSnap.getLong("tickets");
-            long sold = drawSnap.getLong("soldTickets");
-            long total = drawSnap.getLong("totalTickets");
-            String status = drawSnap.getString("status");
+            long tickets = user.getLong("tickets");
+            long sold = draw.getLong("soldTickets");
+            long total = draw.getLong("totalTickets");
+            String status = draw.getString("status");
 
-            /* 🚫 Anti-cheat checks */
-
+            // 🚫 Anti-cheat
             if (!"OPEN".equals(status))
                 throw new RuntimeException("Draw closed");
 
-            if (userTickets < ticketCount)
+            if (tickets < ticketCount)
                 throw new RuntimeException("Not enough tickets");
 
             if (sold + ticketCount > total)
                 throw new RuntimeException("Draw full");
 
-            /* 🎟 Create tickets */
-
+            // 🎟 create tickets
             for (int i = 0; i < ticketCount; i++) {
 
-                String ticketId = UUID.randomUUID().toString();
+                String id = UUID.randomUUID().toString();
 
                 Map<String, Object> data = new HashMap<>();
                 data.put("uid", uid);
                 data.put("createdAt", FieldValue.serverTimestamp());
 
-                transaction.set(ticketRef.document(ticketId), data);
+                tx.set(ticketRef.document(id), data);
             }
 
-            /* 💸 Deduct tickets */
-
-            transaction.update(userRef,
+            tx.update(userRef,
                     "tickets", FieldValue.increment(-ticketCount));
 
             long newSold = sold + ticketCount;
 
-            transaction.update(drawRef,
-                    "soldTickets", newSold);
+            tx.update(drawRef, "soldTickets", newSold);
 
             return newSold;
 
         }).get();
 
-        /* 🎯 AUTO WINNER CHECK */
-
-        checkAndSelectWinner(drawId);
+        // 🎯 auto winner
+        checkWinner(drawId);
     }
 
     /* ================= WINNER ================= */
 
-    public void checkAndSelectWinner(String drawId) throws Exception {
+    public void checkWinner(String drawId) throws Exception {
 
-        DocumentReference drawRef =
-                firestore.collection("lucky_draws").document(drawId);
+        DocumentReference drawRef = db.collection("lucky_draws").document(drawId);
+        DocumentSnapshot draw = drawRef.get().get();
 
-        DocumentSnapshot drawSnap = drawRef.get().get();
-
-        long sold = drawSnap.getLong("soldTickets");
-        long total = drawSnap.getLong("totalTickets");
+        long sold = draw.getLong("soldTickets");
+        long total = draw.getLong("totalTickets");
 
         if (sold < total) return;
 
-        Boolean done = drawSnap.getBoolean("isCompleted");
+        Boolean done = draw.getBoolean("isCompleted");
         if (done != null && done) return;
 
-        int randomIndex = new Random().nextInt((int) sold);
+        int index = new Random().nextInt((int) sold);
 
-        Query query = firestore.collection("lucky_draw_tickets")
+        Query query = db.collection("lucky_draw_tickets")
                 .document(drawId)
                 .collection("tickets")
                 .limit(1)
-                .offset(randomIndex);
+                .offset(index);
 
         List<QueryDocumentSnapshot> docs =
                 query.get().get().getDocuments();
 
         if (docs.isEmpty()) return;
 
-        DocumentSnapshot winnerTicket = docs.get(0);
+        DocumentSnapshot win = docs.get(0);
 
-        String winnerUid = winnerTicket.getString("uid");
-
-        /* 🎯 Save winner */
+        String winnerUid = win.getString("uid");
 
         drawRef.update(
                 "winnerUid", winnerUid,
@@ -120,11 +107,9 @@ public class DrawService {
                 "isCompleted", true
         );
 
-        /* 🎁 Reward */
+        long reward = draw.getLong("rewardCoins");
 
-        long reward = drawSnap.getLong("rewardCoins");
-
-        firestore.collection("users")
+        db.collection("users")
                 .document(winnerUid)
                 .update("coins", FieldValue.increment(reward));
     }
