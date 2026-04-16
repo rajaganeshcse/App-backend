@@ -12,6 +12,8 @@ public class DrawService {
     @Autowired
     private Firestore db;
 
+    /* ================= JOIN DRAW ================= */
+
     public void join(String drawId, String uid, int ticketCount) throws Exception {
 
         DocumentReference userRef = db.collection("users").document(uid);
@@ -24,8 +26,8 @@ public class DrawService {
 
         db.runTransaction(tx -> {
 
-            DocumentSnapshot user = tx.get(userRef).get();
-            DocumentSnapshot draw = tx.get(drawRef).get();
+            DocumentSnapshot user = tx.get(userRef);
+            DocumentSnapshot draw = tx.get(drawRef);
 
             Long ticketsObj = user.getLong("tickets");
             Long soldObj = draw.getLong("soldTickets");
@@ -34,9 +36,11 @@ public class DrawService {
             long tickets = ticketsObj != null ? ticketsObj : 0;
             long sold = soldObj != null ? soldObj : 0;
             long total = totalObj != null ? totalObj : 0;
+
             String status = draw.getString("status");
 
-            // 🚫 Anti-cheat
+            /* 🚫 Anti-cheat */
+
             if (!"OPEN".equals(status))
                 throw new RuntimeException("Draw closed");
 
@@ -46,30 +50,37 @@ public class DrawService {
             if (sold + ticketCount > total)
                 throw new RuntimeException("Draw full");
 
-            // 🎟 create tickets
+            /* 🎟 CREATE TICKETS */
+
             for (int i = 0; i < ticketCount; i++) {
 
-                String id = UUID.randomUUID().toString();
+                String ticketId = UUID.randomUUID().toString();
 
                 Map<String, Object> data = new HashMap<>();
+                data.put("ticketId", ticketId);
                 data.put("uid", uid);
+                data.put("drawId", drawId);
                 data.put("createdAt", FieldValue.serverTimestamp());
 
-                tx.set(ticketRef.document(id), data);
+                tx.set(ticketRef.document(ticketId), data);
+
+                // Optional user history
+                tx.set(userRef.collection("myTickets").document(ticketId), data);
             }
 
-            tx.update(userRef,
-                    "tickets", FieldValue.increment(-ticketCount));
+            /* 💸 Deduct tickets */
+            tx.update(userRef, "tickets", FieldValue.increment(-ticketCount));
 
             long newSold = sold + ticketCount;
 
+            /* 📊 Update draw */
             tx.update(drawRef, "soldTickets", newSold);
 
             return newSold;
 
         }).get();
 
-        // 🎯 auto winner
+        /* 🎯 AUTO WINNER */
         checkWinner(drawId);
     }
 
@@ -77,11 +88,16 @@ public class DrawService {
 
     public void checkWinner(String drawId) throws Exception {
 
-        DocumentReference drawRef = db.collection("lucky_draws").document(drawId);
+        DocumentReference drawRef =
+                db.collection("lucky_draws").document(drawId);
+
         DocumentSnapshot draw = drawRef.get().get();
 
-        long sold = draw.getLong("soldTickets");
-        long total = draw.getLong("totalTickets");
+        Long soldObj = draw.getLong("soldTickets");
+        Long totalObj = draw.getLong("totalTickets");
+
+        long sold = soldObj != null ? soldObj : 0;
+        long total = totalObj != null ? totalObj : 0;
 
         if (sold < total) return;
 
@@ -104,14 +120,17 @@ public class DrawService {
         DocumentSnapshot win = docs.get(0);
 
         String winnerUid = win.getString("uid");
+        String ticketId = win.getString("ticketId");
 
         drawRef.update(
                 "winnerUid", winnerUid,
+                "winnerTicketId", ticketId,
                 "status", "CLOSED",
                 "isCompleted", true
         );
 
-        long reward = draw.getLong("rewardCoins");
+        Long rewardObj = draw.getLong("rewardCoins");
+        long reward = rewardObj != null ? rewardObj : 0;
 
         db.collection("users")
                 .document(winnerUid)
