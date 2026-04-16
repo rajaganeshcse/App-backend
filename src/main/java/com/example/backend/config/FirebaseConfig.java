@@ -3,7 +3,11 @@ package com.example.backend.config;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
+import com.google.firebase.cloud.FirestoreClient;
+import com.google.cloud.firestore.Firestore;
+
 import jakarta.annotation.PostConstruct;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.ByteArrayInputStream;
@@ -30,7 +34,8 @@ public class FirebaseConfig {
                 "  \"client_id\": \"" + clientId + "\"\n" +
                 "}";
 
-        InputStream serviceAccount = new ByteArrayInputStream(json.getBytes());
+        InputStream serviceAccount =
+                new ByteArrayInputStream(json.getBytes());
 
         FirebaseOptions options = FirebaseOptions.builder()
                 .setCredentials(GoogleCredentials.fromStream(serviceAccount))
@@ -41,5 +46,11 @@ public class FirebaseConfig {
         }
 
         System.out.println("🔥 Firebase Connected");
+    }
+
+    // ✅ THIS FIXES YOUR ERROR
+    @Bean
+    public Firestore firestore() {
+        return FirestoreClient.getFirestore();
     }
 }
