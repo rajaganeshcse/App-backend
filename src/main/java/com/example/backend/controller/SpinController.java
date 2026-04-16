@@ -100,7 +100,7 @@ public class SpinController {
         // ✅ COIN HISTORY
         Map<String, Object> coinDetail = new HashMap<>();
         coinDetail.put("amount",reward);
-        coinDetail.put("type", "Daily Ad");
+        coinDetail.put("type", "Daily spin");
         coinDetail.put("created_at", FieldValue.serverTimestamp());
 
         DocumentReference userRef =
