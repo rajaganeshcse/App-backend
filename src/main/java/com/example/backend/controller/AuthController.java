@@ -47,7 +47,6 @@ public class AuthController {
                 // 🔐 MAIN BALANCE
                 user.put("coins", 100);
                 user.put("tickets", 10);
-                user.put("walletToken", 1);
 
                 user.put("created_at", FieldValue.serverTimestamp());
 

@@ -97,6 +97,14 @@ public class SpinController {
                 .document(userId)
                 .set(updates, SetOptions.merge());
 
+        // ✅ COIN HISTORY
+        Map<String, Object> coinDetail = new HashMap<>();
+        coinDetail.put("amount",reward);
+        coinDetail.put("type", "Daily Ad");
+        coinDetail.put("created_at", FieldValue.serverTimestamp());
+
+        db.collection("coinDetails").add(coinDetail);
+
         int remaining = MAX_SPINS - (spinCount + 1);
 
         return new SpinResponse(reward, remaining);
