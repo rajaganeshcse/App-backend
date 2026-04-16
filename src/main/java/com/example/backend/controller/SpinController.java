@@ -101,6 +101,7 @@ public class SpinController {
         Map<String, Object> coinDetail = new HashMap<>();
         coinDetail.put("amount",reward);
         coinDetail.put("type", "Daily spin");
+        coinDetail.put("status", "Credit");
         coinDetail.put("created_at", FieldValue.serverTimestamp());
 
         DocumentReference userRef =

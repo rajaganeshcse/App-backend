@@ -81,12 +81,14 @@ public class RewardController {
             Map<String, Object> coinDetail = new HashMap<>();
             coinDetail.put("amount", coinReward);
             coinDetail.put("type", "ads");
+            coinDetail.put("status", "Credit");
             coinDetail.put("created_at", FieldValue.serverTimestamp());
             userRef.collection("coinDetails").add(coinDetail);
 
             Map<String, Object> ticketDetail = new HashMap<>();
             ticketDetail.put("amount", ticketReward);
             ticketDetail.put("type", "ads");
+            coinDetail.put("status", "Credit");
             ticketDetail.put("created_at", FieldValue.serverTimestamp());
             userRef.collection("ticketDetails").add(ticketDetail);
 

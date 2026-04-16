@@ -57,6 +57,7 @@ public class AuthController {
                 Map<String, Object> coinDetail = new HashMap<>();
                 coinDetail.put("amount", 100);
                 coinDetail.put("type", "welcome_bonus");
+                coinDetail.put("status", "Credit");
                 coinDetail.put("created_at", FieldValue.serverTimestamp());
 
                 ref.collection("coinDetails").add(coinDetail);
@@ -65,6 +66,7 @@ public class AuthController {
                 Map<String, Object> ticketDetail = new HashMap<>();
                 ticketDetail.put("amount", 10);
                 ticketDetail.put("type", "welcome_bonus");
+                coinDetail.put("status", "Credit");
                 ticketDetail.put("created_at", FieldValue.serverTimestamp());
 
                 ref.collection("ticketDetails").add(ticketDetail);
