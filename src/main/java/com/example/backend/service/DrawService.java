@@ -26,8 +26,8 @@ public class DrawService {
 
         db.runTransaction(tx -> {
 
-            DocumentSnapshot user = tx.get(userRef);
-            DocumentSnapshot draw = tx.get(drawRef);
+            DocumentSnapshot user = tx.get(userRef).get();
+            DocumentSnapshot draw = tx.get(drawRef).get();
 
             Long ticketsObj = user.getLong("tickets");
             Long soldObj = draw.getLong("soldTickets");
