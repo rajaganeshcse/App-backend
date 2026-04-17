@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+
 @RestController
 @RequestMapping("/api/draw")
 public class DrawController {
@@ -24,16 +25,14 @@ public class DrawController {
             String uid = TokenUtil.verify(token);
 
             String drawId = (String) req.get("drawId");
-            Number ticketNum = (Number) req.get("ticketCount");
+            String type = (String) req.get("type"); // AD / TICKET
 
-            int ticketCount = ticketNum != null ? ticketNum.intValue() : 0;
-
-            if (drawId == null || ticketCount <= 0) {
+            if (drawId == null || type == null) {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "Invalid input"));
             }
 
-            service.join(drawId, uid, ticketCount);
+            service.join(drawId, uid, type);
 
             return ResponseEntity.ok(Map.of("message", "Joined 🎟️"));
 

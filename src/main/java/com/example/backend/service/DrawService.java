@@ -12,9 +12,7 @@ public class DrawService {
     @Autowired
     private Firestore db;
 
-    /* ================= JOIN DRAW ================= */
-
-    public void join(String drawId, String uid, int ticketCount) throws Exception {
+    public void join(String drawId, String uid, String type) throws Exception {
 
         DocumentReference userRef = db.collection("users").document(uid);
         DocumentReference drawRef = db.collection("lucky_draws").document(drawId);
@@ -29,62 +27,72 @@ public class DrawService {
             DocumentSnapshot user = tx.get(userRef).get();
             DocumentSnapshot draw = tx.get(drawRef).get();
 
-            Long ticketsObj = user.getLong("tickets");
-            Long soldObj = draw.getLong("soldTickets");
-            Long totalObj = draw.getLong("totalTickets");
-
-            long tickets = ticketsObj != null ? ticketsObj : 0;
-            long sold = soldObj != null ? soldObj : 0;
-            long total = totalObj != null ? totalObj : 0;
+            long userTickets = Optional.ofNullable(user.getLong("tickets")).orElse(0L);
+            long sold = Optional.ofNullable(draw.getLong("soldTickets")).orElse(0L);
+            long total = Optional.ofNullable(draw.getLong("totalTickets")).orElse(0L);
 
             String status = draw.getString("status");
-
-            /* 🚫 Anti-cheat */
 
             if (!"OPEN".equals(status))
                 throw new RuntimeException("Draw closed");
 
-            if (tickets < ticketCount)
-                throw new RuntimeException("Not enough tickets");
+            /* ===== ENTRY TYPE ===== */
 
-            if (sold + ticketCount > total)
-                throw new RuntimeException("Draw full");
+            if ("AD".equals(type)) {
 
-            /* 🎟 CREATE TICKETS */
+                // only 1 free entry
+                Query q = ticketRef
+                        .whereEqualTo("uid", uid)
+                        .whereEqualTo("type", "AD")
+                        .limit(1);
 
-            for (int i = 0; i < ticketCount; i++) {
-
-                String ticketId = UUID.randomUUID().toString();
-
-                Map<String, Object> data = new HashMap<>();
-                data.put("ticketId", ticketId);
-                data.put("uid", uid);
-                data.put("drawId", drawId);
-                data.put("createdAt", FieldValue.serverTimestamp());
-
-                tx.set(ticketRef.document(ticketId), data);
-
-                // Optional user history
-                tx.set(userRef.collection("myTickets").document(ticketId), data);
+                if (!q.get().get().isEmpty())
+                    throw new RuntimeException("Free entry already used");
             }
 
-            /* 💸 Deduct tickets */
-            tx.update(userRef, "tickets", FieldValue.increment(-ticketCount));
+            else if ("TICKET".equals(type)) {
 
-            long newSold = sold + ticketCount;
+                if (userTickets < 1)
+                    throw new RuntimeException("Not enough tickets");
 
-            /* 📊 Update draw */
-            tx.update(drawRef, "soldTickets", newSold);
+                tx.update(userRef, "tickets",
+                        FieldValue.increment(-1));
+            }
 
-            return newSold;
+            else {
+                throw new RuntimeException("Invalid type");
+            }
+
+            if (sold + 1 > total)
+                throw new RuntimeException("Draw full");
+
+            /* ===== CREATE TICKET ===== */
+
+            String ticketId = UUID.randomUUID().toString();
+            int ticketNumber = new Random().nextInt(1_000_000);
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("ticketId", ticketId);
+            data.put("uid", uid);
+            data.put("drawId", drawId);
+            data.put("type", type);
+            data.put("ticketNumber", ticketNumber);
+            data.put("createdAt", FieldValue.serverTimestamp());
+
+            tx.set(ticketRef.document(ticketId), data);
+
+            tx.set(userRef.collection("myTickets")
+                    .document(ticketId), data);
+
+            tx.update(drawRef, "soldTickets",
+                    FieldValue.increment(1));
+
+            return null;
 
         }).get();
 
-        /* 🎯 AUTO WINNER */
         checkWinner(drawId);
     }
-
-    /* ================= WINNER ================= */
 
     public void checkWinner(String drawId) throws Exception {
 
@@ -93,44 +101,50 @@ public class DrawService {
 
         DocumentSnapshot draw = drawRef.get().get();
 
-        Long soldObj = draw.getLong("soldTickets");
-        Long totalObj = draw.getLong("totalTickets");
-
-        long sold = soldObj != null ? soldObj : 0;
-        long total = totalObj != null ? totalObj : 0;
+        long sold = Optional.ofNullable(draw.getLong("soldTickets")).orElse(0L);
+        long total = Optional.ofNullable(draw.getLong("totalTickets")).orElse(0L);
 
         if (sold < total) return;
 
         Boolean done = draw.getBoolean("isCompleted");
         if (done != null && done) return;
 
-        int index = new Random().nextInt((int) sold);
+        int randomNumber = new Random().nextInt(1_000_000);
 
         Query query = db.collection("lucky_draw_tickets")
                 .document(drawId)
                 .collection("tickets")
-                .limit(1)
-                .offset(index);
+                .orderBy("ticketNumber")
+                .startAt(randomNumber)
+                .limit(1);
 
         List<QueryDocumentSnapshot> docs =
                 query.get().get().getDocuments();
+
+        if (docs.isEmpty()) {
+            docs = db.collection("lucky_draw_tickets")
+                    .document(drawId)
+                    .collection("tickets")
+                    .orderBy("ticketNumber")
+                    .limit(1)
+                    .get().get().getDocuments();
+        }
 
         if (docs.isEmpty()) return;
 
         DocumentSnapshot win = docs.get(0);
 
         String winnerUid = win.getString("uid");
-        String ticketId = win.getString("ticketId");
+        Long winNumber = win.getLong("ticketNumber");
 
         drawRef.update(
                 "winnerUid", winnerUid,
-                "winnerTicketId", ticketId,
+                "winnerTicketNumber", winNumber,
                 "status", "CLOSED",
                 "isCompleted", true
         );
 
-        Long rewardObj = draw.getLong("rewardCoins");
-        long reward = rewardObj != null ? rewardObj : 0;
+        long reward = Optional.ofNullable(draw.getLong("rewardCoins")).orElse(0L);
 
         db.collection("users")
                 .document(winnerUid)
