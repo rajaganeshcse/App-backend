@@ -12,9 +12,11 @@ public class DrawService {
     @Autowired
     private Firestore db;
 
+    /* ================= JOIN DRAW ================= */
+
     public void join(String drawId, String uid, String type) throws Exception {
 
-        type = type.toUpperCase();
+        final String entryType = type == null ? "" : type.toUpperCase();
 
         DocumentReference userRef = db.collection("users").document(uid);
         DocumentReference drawRef = db.collection("lucky_draws").document(drawId);
@@ -24,9 +26,9 @@ public class DrawService {
                         .document(drawId)
                         .collection("tickets");
 
-        /* ===== CHECK AD OUTSIDE TRANSACTION ===== */
+        /* ================= FREE ENTRY CHECK ================= */
 
-        if ("AD".equals(type)) {
+        if ("AD".equals(entryType)) {
 
             Query q = ticketRef
                     .whereEqualTo("uid", uid)
@@ -37,6 +39,8 @@ public class DrawService {
                 throw new RuntimeException("Free entry already used");
             }
         }
+
+        /* ================= TRANSACTION ================= */
 
         db.runTransaction(tx -> {
 
@@ -52,7 +56,9 @@ public class DrawService {
             if (!"OPEN".equalsIgnoreCase(status))
                 throw new RuntimeException("Draw closed");
 
-            if ("TICKET".equals(type)) {
+            /* ================= TICKET ENTRY ================= */
+
+            if ("TICKET".equals(entryType)) {
 
                 if (userTickets < 1)
                     throw new RuntimeException("Not enough tickets");
@@ -61,10 +67,16 @@ public class DrawService {
                         FieldValue.increment(-1));
             }
 
+            else if (!"AD".equals(entryType)) {
+                throw new RuntimeException("Invalid type");
+            }
+
+            /* ================= CHECK LIMIT ================= */
+
             if (sold + 1 > total)
                 throw new RuntimeException("Draw full");
 
-            /* ===== SEQUENTIAL TICKET ===== */
+            /* ================= CREATE ENTRY ================= */
 
             long ticketNumber = sold + 1;
 
@@ -74,7 +86,7 @@ public class DrawService {
             data.put("ticketId", ticketId);
             data.put("uid", uid);
             data.put("drawId", drawId);
-            data.put("type", type);
+            data.put("type", entryType);
             data.put("ticketNumber", ticketNumber);
             data.put("createdAt", FieldValue.serverTimestamp());
 
@@ -90,8 +102,12 @@ public class DrawService {
 
         }).get();
 
+        /* ================= CHECK WINNER ================= */
+
         checkWinner(drawId);
     }
+
+    /* ================= WINNER ================= */
 
     public void checkWinner(String drawId) throws Exception {
 
@@ -108,37 +124,28 @@ public class DrawService {
         Boolean done = draw.getBoolean("isCompleted");
         if (done != null && done) return;
 
-        int randomNumber = new Random().nextInt(1_000_000);
+        int index = new Random().nextInt((int) sold);
 
         Query query = db.collection("lucky_draw_tickets")
                 .document(drawId)
                 .collection("tickets")
                 .orderBy("ticketNumber")
-                .startAt(randomNumber)
+                .offset(index)
                 .limit(1);
 
         List<QueryDocumentSnapshot> docs =
                 query.get().get().getDocuments();
-
-        if (docs.isEmpty()) {
-            docs = db.collection("lucky_draw_tickets")
-                    .document(drawId)
-                    .collection("tickets")
-                    .orderBy("ticketNumber")
-                    .limit(1)
-                    .get().get().getDocuments();
-        }
 
         if (docs.isEmpty()) return;
 
         DocumentSnapshot win = docs.get(0);
 
         String winnerUid = win.getString("uid");
-        Long winNumber = win.getLong("ticketNumber");
+        Long ticketNumber = win.getLong("ticketNumber");
 
         drawRef.update(
                 "winnerUid", winnerUid,
-                "winnerTicketNumber", winNumber,
+                "winnerTicketNumber", ticketNumber,
                 "status", "CLOSED",
                 "isCompleted", true
         );
