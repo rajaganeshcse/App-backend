@@ -48,10 +48,13 @@ public class DrawService {
             DocumentSnapshot draw = tx.get(drawRef).get();
 
             long userTickets = Optional.ofNullable(user.getLong("tickets")).orElse(0L);
-            long sold = Optional.ofNullable(draw.getLong("soldTickets")).orElse(0L);
-            long total = Optional.ofNullable(draw.getLong("totalTickets")).orElse(0L);
+            long filled = Optional.ofNullable(draw.getLong("filledSlots")).orElse(0L);
+            long total = Optional.ofNullable(draw.getLong("totalSlots")).orElse(0L);
 
             String status = draw.getString("status");
+
+            System.out.println("ENTRY TYPE = " + entryType);
+            System.out.println("USER TICKETS BEFORE = " + userTickets);
 
             if (!"OPEN".equalsIgnoreCase(status))
                 throw new RuntimeException("Draw closed");
@@ -63,6 +66,8 @@ public class DrawService {
                 if (userTickets < 1)
                     throw new RuntimeException("Not enough tickets");
 
+                System.out.println("Deducting 1 ticket...");
+
                 tx.update(userRef, "tickets",
                         FieldValue.increment(-1));
             }
@@ -73,12 +78,12 @@ public class DrawService {
 
             /* ================= CHECK LIMIT ================= */
 
-            if (sold + 1 > total)
+            if (filled + 1 > total)
                 throw new RuntimeException("Draw full");
 
             /* ================= CREATE ENTRY ================= */
 
-            long ticketNumber = sold + 1;
+            long ticketNumber = filled + 1;
 
             String ticketId = UUID.randomUUID().toString();
 
@@ -95,7 +100,7 @@ public class DrawService {
             tx.set(userRef.collection("myTickets")
                     .document(ticketId), data);
 
-            tx.update(drawRef, "soldTickets",
+            tx.update(drawRef, "filledSlots",
                     FieldValue.increment(1));
 
             return null;
@@ -116,15 +121,15 @@ public class DrawService {
 
         DocumentSnapshot draw = drawRef.get().get();
 
-        long sold = Optional.ofNullable(draw.getLong("soldTickets")).orElse(0L);
-        long total = Optional.ofNullable(draw.getLong("totalTickets")).orElse(0L);
+        long filled = Optional.ofNullable(draw.getLong("filledSlots")).orElse(0L);
+        long total = Optional.ofNullable(draw.getLong("totalSlots")).orElse(0L);
 
-        if (sold < total) return;
+        if (filled < total) return;
 
         Boolean done = draw.getBoolean("isCompleted");
         if (done != null && done) return;
 
-        int index = new Random().nextInt((int) sold);
+        int index = new Random().nextInt((int) filled);
 
         Query query = db.collection("lucky_draw_tickets")
                 .document(drawId)
