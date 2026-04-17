@@ -14,6 +14,8 @@ public class DrawService {
 
     public void join(String drawId, String uid, String type) throws Exception {
 
+        type = type.toUpperCase();
+
         DocumentReference userRef = db.collection("users").document(uid);
         DocumentReference drawRef = db.collection("lucky_draws").document(drawId);
 
@@ -21,6 +23,20 @@ public class DrawService {
                 db.collection("lucky_draw_tickets")
                         .document(drawId)
                         .collection("tickets");
+
+        /* ===== CHECK AD OUTSIDE TRANSACTION ===== */
+
+        if ("AD".equals(type)) {
+
+            Query q = ticketRef
+                    .whereEqualTo("uid", uid)
+                    .whereEqualTo("type", "AD")
+                    .limit(1);
+
+            if (!q.get().get().isEmpty()) {
+                throw new RuntimeException("Free entry already used");
+            }
+        }
 
         db.runTransaction(tx -> {
 
@@ -33,24 +49,10 @@ public class DrawService {
 
             String status = draw.getString("status");
 
-            if (!"OPEN".equals(status))
+            if (!"OPEN".equalsIgnoreCase(status))
                 throw new RuntimeException("Draw closed");
 
-            /* ===== ENTRY TYPE ===== */
-
-            if ("AD".equals(type)) {
-
-                // only 1 free entry
-                Query q = ticketRef
-                        .whereEqualTo("uid", uid)
-                        .whereEqualTo("type", "AD")
-                        .limit(1);
-
-                if (!q.get().get().isEmpty())
-                    throw new RuntimeException("Free entry already used");
-            }
-
-            else if ("TICKET".equals(type)) {
+            if ("TICKET".equals(type)) {
 
                 if (userTickets < 1)
                     throw new RuntimeException("Not enough tickets");
@@ -59,17 +61,14 @@ public class DrawService {
                         FieldValue.increment(-1));
             }
 
-            else {
-                throw new RuntimeException("Invalid type");
-            }
-
             if (sold + 1 > total)
                 throw new RuntimeException("Draw full");
 
-            /* ===== CREATE TICKET ===== */
+            /* ===== SEQUENTIAL TICKET ===== */
+
+            long ticketNumber = sold + 1;
 
             String ticketId = UUID.randomUUID().toString();
-            int ticketNumber = new Random().nextInt(1_000_000);
 
             Map<String, Object> data = new HashMap<>();
             data.put("ticketId", ticketId);
