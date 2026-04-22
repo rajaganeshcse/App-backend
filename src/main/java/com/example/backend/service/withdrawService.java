@@ -11,7 +11,6 @@ import java.util.Map;
 @Service
 public class withdrawService {
 
-
     public Map<String, Object> createWithdrawRequest(
             String uid,
             long amount,
@@ -19,53 +18,55 @@ public class withdrawService {
             String details
     ) throws Exception {
 
-        // ✅ Validate type
-        List<String> allowedTypes = List.of("UPI", "BANK", "GPAY", "PHONEPE");
+        List<String> allowedTypes = List.of("UPI", "BANK", "GOOGLE", "PHONEPE");
 
         if (!allowedTypes.contains(type.toUpperCase())) {
-            return Map.of("status", "failed", "message", "Invalid withdraw type");
+            return Map.of("status", false, "message", "Invalid withdraw type");
         }
-        Firestore db = FirestoreClient.getFirestore();
 
+        Firestore db = FirestoreClient.getFirestore();
         DocumentReference userRef = db.collection("users").document(uid);
 
-        DocumentSnapshot userDoc = userRef.get().get();
+        return db.runTransaction(transaction -> {
 
-        long coins = 0;
+            DocumentSnapshot userDoc = transaction.get(userRef).get();
 
-        if (userDoc.exists() && userDoc.getLong("coins") != null) {
-            coins = userDoc.getLong("coins");
-        }
+            long coins = userDoc.getLong("coins") != null
+                    ? userDoc.getLong("coins")
+                    : 0;
 
-        // ❌ Balance check
-        if (coins < amount) {
-            return Map.of("status", "failed", "message", "Insufficient balance");
-        }
+            if (coins < amount) {
+                Map<String, Object> fail = new HashMap<>();
+                fail.put("status", false);
+                fail.put("message", "Insufficient balance");
+                return fail;
+            }
 
-        // ❗ Optional: prevent multiple pending requests
-        Query query = db.collection("withdraw_requests")
-                .whereEqualTo("userId", uid)
-                .whereEqualTo("status", "PENDING");
-        QuerySnapshot qs = query.get().get();
+            long updatedCoins = coins - amount;
+            transaction.update(userRef, "coins", updatedCoins);
 
-        if (!qs.isEmpty()) {
-            return Map.of("status", "failed", "message", "Pending request already exists");
-        }
+            DocumentReference reqRef =
+                    db.collection("withdraw_requests").document();
 
-        // ✅ Create withdraw request (NO deduction here)
-        Map<String, Object> request = new HashMap<>();
-        request.put("userId", uid);
-        request.put("amount", amount);
-        request.put("type", type.toUpperCase());
-        request.put("details", details);
-        request.put("status", "PENDING");
-        request.put("createdAt", System.currentTimeMillis());
+            String requestId = reqRef.getId();
 
-        db.collection("withdraw_requests").add(request);
+            Map<String, Object> request = new HashMap<>();
+            request.put("uid", uid);
+            request.put("amount", amount);
+            request.put("type", type);
+            request.put("details", details);
+            request.put("status", "PENDING");
 
-        return Map.of(
-                "status", "success",
-                "message", "Withdraw request submitted"
-        );
+            transaction.set(reqRef, request);
+
+            Map<String, Object> res = new HashMap<>();
+            res.put("status", true);
+            res.put("message", "Withdraw request submitted");
+            res.put("updatedCoins", updatedCoins);
+            res.put("requestId", requestId);
+
+            return res;
+
+        }).get();   // ✅ no error
     }
 }

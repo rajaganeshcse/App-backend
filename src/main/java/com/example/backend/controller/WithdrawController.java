@@ -9,11 +9,11 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
-public class withdraw_controller {
+public class WithdrawController {
 
     private final withdrawService withdrawService;
 
-    public withdraw_controller(withdrawService withdrawService) {
+    public WithdrawController(withdrawService withdrawService) {
         this.withdrawService = withdrawService;
     }
 
@@ -24,29 +24,26 @@ public class withdraw_controller {
     ) {
         try {
             String uid = TokenUtil.verify(token);
+
             Long amount = req.get("amount") != null
                     ? Long.parseLong(req.get("amount").toString())
                     : null;
 
-            String type = req.get("type") != null
-                    ? req.get("type").toString()
-                    : null;
-
-            String details = req.get("details") != null
-                    ? req.get("details").toString()
-                    : null;
+            String type = (String) req.get("type");
+            String details = (String) req.get("details");
 
             if (amount == null || type == null || details == null) {
                 return ResponseEntity.badRequest()
-                        .body(Map.of("error", "amount, type, details required"));
+                        .body(Map.of("status", false, "message", "Missing fields"));
             }
+
             return ResponseEntity.ok(
                     withdrawService.createWithdrawRequest(uid, amount, type, details)
             );
 
         } catch (Exception e) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", e.getMessage()));
+                    .body(Map.of("status", false, "message", e.getMessage()));
         }
     }
 }
