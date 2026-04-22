@@ -24,7 +24,7 @@ public class SpinController {
         DocumentSnapshot doc = ref.get().get();
 
         int spinCount = 0;
-        String lastDate = "";
+        String lastDate ="";
 
         if (doc.exists()) {
             spinCount = doc.getLong("dailySpinCount") != null ?
@@ -57,7 +57,7 @@ public class SpinController {
 
         int spinCount = (int) data.get("spinCount");
 
-        int remaining = Math.max(0, MAX_SPINS - spinCount); // ✅ safe
+        int remaining = Math.max(0, MAX_SPINS - spinCount);
 
         return Collections.singletonMap("remainingSpins", remaining);
     }
@@ -68,8 +68,6 @@ public class SpinController {
     public SpinResponse spin(
             @RequestHeader("Authorization") String token,
             @RequestParam String userId) throws Exception {
-
-        // 🔐 (OPTIONAL) verify token here later
 
         Map<String, Object> data = getUserSpinData(userId);
 
