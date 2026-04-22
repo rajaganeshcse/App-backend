@@ -11,7 +11,6 @@ import java.util.Map;
 @Service
 public class withdrawService {
 
-    private static final long MIN_WITHDRAW = 100;
 
     public Map<String, Object> createWithdrawRequest(
             String uid,
@@ -26,13 +25,8 @@ public class withdrawService {
         if (!allowedTypes.contains(type.toUpperCase())) {
             return Map.of("status", "failed", "message", "Invalid withdraw type");
         }
-
-        // ✅ Minimum check
-        if (amount < MIN_WITHDRAW) {
-            return Map.of("status", "failed", "message", "Minimum withdraw is " + MIN_WITHDRAW);
-        }
-
         Firestore db = FirestoreClient.getFirestore();
+
         DocumentReference userRef = db.collection("users").document(uid);
 
         DocumentSnapshot userDoc = userRef.get().get();
@@ -52,7 +46,6 @@ public class withdrawService {
         Query query = db.collection("withdraw_requests")
                 .whereEqualTo("userId", uid)
                 .whereEqualTo("status", "PENDING");
-
         QuerySnapshot qs = query.get().get();
 
         if (!qs.isEmpty()) {

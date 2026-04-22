@@ -24,7 +24,6 @@ public class withdraw_controller {
     ) {
         try {
             String uid = TokenUtil.verify(token);
-
             Long amount = req.get("amount") != null
                     ? Long.parseLong(req.get("amount").toString())
                     : null;
@@ -41,7 +40,6 @@ public class withdraw_controller {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "amount, type, details required"));
             }
-
             return ResponseEntity.ok(
                     withdrawService.createWithdrawRequest(uid, amount, type, details)
             );
