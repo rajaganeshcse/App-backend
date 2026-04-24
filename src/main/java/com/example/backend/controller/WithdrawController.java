@@ -23,27 +23,43 @@ public class WithdrawController {
             @RequestBody Map<String, Object> req
     ) {
         try {
+            // ✅ Extract UID from token
             String uid = TokenUtil.verify(token);
 
+            // ✅ Read fields
             Long amount = req.get("amount") != null
                     ? Long.parseLong(req.get("amount").toString())
                     : null;
 
-            String type = (String) req.get("type");
-            String details = (String) req.get("details");
+            String type = req.get("type") != null
+                    ? req.get("type").toString()
+                    : null;
 
-            if (amount == null || type == null || details == null) {
+            String details = req.get("details") != null
+                    ? req.get("details").toString()
+                    : null;
+
+            // ✅ Validation
+            if (amount == null || amount <= 0 || type == null || details == null) {
                 return ResponseEntity.badRequest()
-                        .body(Map.of("status", false, "message", "Missing fields"));
+                        .body(Map.of(
+                                "status", false,
+                                "message", "Invalid or missing fields"
+                        ));
             }
 
-            return ResponseEntity.ok(
-                    withdrawService.createWithdrawRequest(uid, amount, type, details)
-            );
+            // ✅ Call service
+            Map<String, Object> response =
+                    withdrawService.createWithdrawRequest(uid, amount, type, details);
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("status", false, "message", e.getMessage()));
+                    .body(Map.of(
+                            "status", false,
+                            "message", e.getMessage()
+                    ));
         }
     }
 }

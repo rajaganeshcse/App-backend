@@ -18,10 +18,23 @@ public class withdrawService {
             String details
     ) throws Exception {
 
-        List<String> allowedTypes = List.of("UPI", "BANK", "GOOGLE", "PHONEPE");
+        // ✅ Normalize type (fix Android lowercase issue)
+        String normalizedType = type.toUpperCase();
 
-        if (!allowedTypes.contains(type.toUpperCase())) {
-            return Map.of("status", false, "message", "Invalid withdraw type");
+        // ✅ Allowed types (Amazon added)
+        List<String> allowedTypes = List.of(
+                "UPI",
+                "BANK",
+                "GOOGLE",
+                "PHONEPE",
+                "AMAZON"
+        );
+
+        if (!allowedTypes.contains(normalizedType)) {
+            return Map.of(
+                    "status", false,
+                    "message", "Invalid withdraw type"
+            );
         }
 
         Firestore db = FirestoreClient.getFirestore();
@@ -31,10 +44,17 @@ public class withdrawService {
 
             DocumentSnapshot userDoc = transaction.get(userRef).get();
 
-            long coins = userDoc.getLong("coins") != null
-                    ? userDoc.getLong("coins")
-                    : 0;
+            if (!userDoc.exists()) {
+                Map<String, Object> fail = new HashMap<>();
+                fail.put("status", false);
+                fail.put("message", "User not found");
+                return fail;
+            }
 
+            Long coinsObj = userDoc.getLong("coins");
+            long coins = coinsObj != null ? coinsObj : 0;
+
+            // ❌ Not enough balance
             if (coins < amount) {
                 Map<String, Object> fail = new HashMap<>();
                 fail.put("status", false);
@@ -42,9 +62,11 @@ public class withdrawService {
                 return fail;
             }
 
+            // ✅ Deduct coins
             long updatedCoins = coins - amount;
             transaction.update(userRef, "coins", updatedCoins);
 
+            // ✅ Create withdraw request
             DocumentReference reqRef =
                     db.collection("withdraw_requests").document();
 
@@ -53,12 +75,16 @@ public class withdrawService {
             Map<String, Object> request = new HashMap<>();
             request.put("uid", uid);
             request.put("amount", amount);
-            request.put("type", type);
+            request.put("type", normalizedType);
             request.put("details", details);
             request.put("status", "PENDING");
 
+            // ✅ IMPORTANT: timestamp
+            request.put("createdAt", FieldValue.serverTimestamp());
+
             transaction.set(reqRef, request);
 
+            // ✅ Response
             Map<String, Object> res = new HashMap<>();
             res.put("status", true);
             res.put("message", "Withdraw request submitted");
@@ -67,6 +93,6 @@ public class withdrawService {
 
             return res;
 
-        }).get();   // ✅ no error
+        }).get(); // ✅ Blocking return for Spring
     }
 }
