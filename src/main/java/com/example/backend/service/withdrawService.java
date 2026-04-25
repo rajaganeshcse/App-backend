@@ -15,8 +15,9 @@ public class withdrawService {
             String uid,
             long amount,
             String type,
-            String details
-    ) throws Exception {
+            String details,
+            Long coinss
+            ) throws Exception {
 
         // ✅ Normalize type (fix Android lowercase issue)
         String normalizedType = type.toUpperCase();
@@ -63,18 +64,19 @@ public class withdrawService {
             }
 
             // ✅ Deduct coins
-            long updatedCoins = coins - amount;
+            long updatedCoins = coins - coinss;
             transaction.update(userRef, "coins", updatedCoins);
 
             // ✅ Create withdraw request
             DocumentReference reqRef =
-                    db.collection("withdraw_requests").document();
+                    db.collection("reedem_requests").document();
 
             String requestId = reqRef.getId();
 
             Map<String, Object> request = new HashMap<>();
             request.put("uid", uid);
             request.put("amount", amount);
+            request.put("coin", coinss);
             request.put("type", normalizedType);
             request.put("details", details);
             request.put("status", "PENDING");

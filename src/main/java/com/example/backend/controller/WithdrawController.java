@@ -23,10 +23,13 @@ public class WithdrawController {
             @RequestBody Map<String, Object> req
     ) {
         try {
-            // ✅ Extract UID from token
+            // ✅ FIX: method name should match TokenUtil
             String uid = TokenUtil.verify(token);
 
-            // ✅ Read fields
+            Long coinss = req.get("coins") != null
+                    ? Long.parseLong(req.get("coins").toString())
+                    : null;
+
             Long amount = req.get("amount") != null
                     ? Long.parseLong(req.get("amount").toString())
                     : null;
@@ -39,27 +42,23 @@ public class WithdrawController {
                     ? req.get("details").toString()
                     : null;
 
-            // ✅ Validation
             if (amount == null || amount <= 0 || type == null || details == null) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of(
-                                "status", false,
-                                "message", "Invalid or missing fields"
-                        ));
+                return ResponseEntity.badRequest().body(Map.of(
+                        "status", false,
+                        "message", "Invalid or missing fields"
+                ));
             }
 
-            // ✅ Call service
             Map<String, Object> response =
-                    withdrawService.createWithdrawRequest(uid, amount, type, details);
+                    withdrawService.createWithdrawRequest(uid, amount, type, details, coinss);
 
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of(
-                            "status", false,
-                            "message", e.getMessage()
-                    ));
+            return ResponseEntity.status(401).body(Map.of(
+                    "status", false,
+                    "message", e.getMessage()
+            ));
         }
     }
 }
