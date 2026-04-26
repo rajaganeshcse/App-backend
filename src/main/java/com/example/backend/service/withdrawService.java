@@ -56,7 +56,7 @@ public class withdrawService {
             long coins = coinsObj != null ? coinsObj : 0;
 
             // ❌ Not enough balance
-            if (coins < amount) {
+            if (coinss <=coins) {
                 Map<String, Object> fail = new HashMap<>();
                 fail.put("status", false);
                 fail.put("message", "Insufficient balance");
@@ -76,7 +76,7 @@ public class withdrawService {
             Map<String, Object> request = new HashMap<>();
             request.put("uid", uid);
             request.put("amount", amount);
-            request.put("coin", coinss);
+            request.put("coinused", coinss);
             request.put("type", normalizedType);
             request.put("details", details);
             request.put("status", "PENDING");
