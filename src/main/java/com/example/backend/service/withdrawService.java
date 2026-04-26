@@ -17,7 +17,7 @@ public class withdrawService {
             String type,
             String details,
             Long coinss
-            ) throws Exception {
+    ) throws Exception {
 
         // ✅ Normalize type (fix Android lowercase issue)
         String normalizedType = type.toUpperCase();
@@ -55,8 +55,7 @@ public class withdrawService {
             Long coinsObj = userDoc.getLong("coins");
             long coins = coinsObj != null ? coinsObj : 0;
 
-            // ❌ Not enough balance
-            if (coinss <=coins) {
+            if (coinss > coins) {
                 Map<String, Object> fail = new HashMap<>();
                 fail.put("status", false);
                 fail.put("message", "Insufficient balance");
