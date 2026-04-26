@@ -81,7 +81,7 @@ public class withdrawService {
             request.put("status", "PENDING");
 
             // ✅ IMPORTANT: timestamp
-            request.put("createdAt", FieldValue.serverTimestamp());
+            request.put("created_at", FieldValue.serverTimestamp());
 
             transaction.set(reqRef, request);
 
