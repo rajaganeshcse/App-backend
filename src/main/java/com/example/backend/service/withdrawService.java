@@ -68,7 +68,7 @@ public class withdrawService {
 
             // ✅ Create withdraw request
             DocumentReference reqRef =
-                    db.collection("redeem_requests").document(uid);
+                    db.collection("redeem_requests").document();
 
             String requestId = reqRef.getId();
 
