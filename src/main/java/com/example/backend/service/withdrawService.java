@@ -2,6 +2,7 @@ package com.example.backend.service;
 
 import com.google.cloud.firestore.*;
 import com.google.firebase.cloud.FirestoreClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -10,6 +11,8 @@ import java.util.Map;
 
 @Service
 public class withdrawService {
+    @Autowired
+    NotificationService  notificationService;
 
     public Map<String, Object> createWithdrawRequest(
             String uid,
@@ -18,6 +21,19 @@ public class withdrawService {
             String details,
             Long coinss
     ) throws Exception {
+
+        Firestore db1 = FirestoreClient.getFirestore();
+
+        DocumentSnapshot doc = db1.collection("users")
+                .document(uid)
+                .get()
+                .get();
+
+        if (doc.exists()) {
+              String token=doc.getString("fcmToken");
+            notificationService.send(token);
+
+        }
 
         // ✅ Normalize type (fix Android lowercase issue)
         String normalizedType = type.toUpperCase();
