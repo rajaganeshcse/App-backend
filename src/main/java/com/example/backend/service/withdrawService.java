@@ -29,11 +29,6 @@ public class withdrawService {
                 .get()
                 .get();
 
-        if (doc.exists()) {
-              String token=doc.getString("fcmToken");
-            notificationService.send(token);
-
-        }
 
         // ✅ Normalize type (fix Android lowercase issue)
         String normalizedType = type.toUpperCase();
@@ -75,6 +70,11 @@ public class withdrawService {
                 Map<String, Object> fail = new HashMap<>();
                 fail.put("status", false);
                 fail.put("message", "Insufficient balance");
+                if (doc.exists()) {
+                    String token=doc.getString("fcmToken");
+                    notificationService.send(token,"Withdrawal Failed ❌","Your withdrawal request failed. Please check your details and try again.","₹ "+amount);
+
+                }
                 return fail;
             }
 
@@ -100,6 +100,12 @@ public class withdrawService {
             request.put("created_at", FieldValue.serverTimestamp());
 
             transaction.set(reqRef, request);
+
+            if (doc.exists()) {
+                String token=doc.getString("fcmToken");
+                notificationService.send(token,"Withdraw Submitted","Your withdrawal is in progress 💸 Please wait while we review and process it.","₹ "+amount);
+
+            }
 
             // ✅ Response
             Map<String, Object> res = new HashMap<>();

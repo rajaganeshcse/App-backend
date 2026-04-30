@@ -1,6 +1,8 @@
 package com.example.backend.service;
 
 import com.google.cloud.firestore.*;
+import com.google.firebase.cloud.FirestoreClient;
+import com.google.firebase.messaging.FirebaseMessaging;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -8,9 +10,12 @@ import java.util.*;
 
 @Service
 public class DrawService {
+    @Autowired
+    NotificationService  notificationService;
 
     @Autowired
     private Firestore db;
+
 
     /* ================= JOIN DRAW ================= */
 
@@ -148,6 +153,7 @@ public class DrawService {
         String winnerUid = win.getString("uid");
         Long ticketNumber = win.getLong("ticketNumber");
 
+
         drawRef.update(
                 "winnerUid", winnerUid,
                 "winnerTicketNumber", ticketNumber,
@@ -155,7 +161,19 @@ public class DrawService {
                 "isCompleted", true
         );
 
+        Firestore db1 = FirestoreClient.getFirestore();
+
+        DocumentSnapshot doc = db1.collection("users")
+                .document(winnerUid)
+                .get()
+                .get();
+
         long reward = Optional.ofNullable(draw.getLong("rewardCoins")).orElse(0L);
+        if (doc.exists()) {
+            String token=doc.getString("fcmToken");
+            notificationService.send(token,"Congratulations! You are the Lucky Winner 🏆🎊","You have won the lucky draw. Your reward has been added successfully. Enjoy your winnings! ",""+reward+" 🪙");
+
+        }
 
         db.collection("users")
                 .document(winnerUid)

@@ -25,7 +25,7 @@ public class AuthController {
 
     @GetMapping("/send")
     public String send(@RequestParam String token) throws Exception {
-        service.send(token);
+        service.send(token, "🎉 Withdraw Success", "₹200 credited");
         return "Sent";
     }
 
