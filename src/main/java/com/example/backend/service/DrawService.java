@@ -171,7 +171,7 @@ public class DrawService {
         long reward = Optional.ofNullable(draw.getLong("rewardCoins")).orElse(0L);
         if (doc.exists()) {
             String token=doc.getString("fcmToken");
-            notificationService.send(token,"Congratulations! You are the Lucky Winner 🏆🎊","You have won the lucky draw. Your reward has been added successfully. Enjoy your winnings! ",""+reward+" 🪙");
+            notificationService.send(token,"Congratulations! You are the Lucky Winner 🏆🎊","You have won"+reward+" Your reward has been added successfully. Enjoy your winnings! ",""+reward+" 🪙");
 
         }
 
