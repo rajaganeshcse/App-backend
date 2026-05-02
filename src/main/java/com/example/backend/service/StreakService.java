@@ -2,6 +2,7 @@ package com.example.backend.service;
 
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.FieldValue;
 import com.google.cloud.firestore.Firestore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,8 @@ import java.util.Map;
 
 @Service
 public class StreakService {
+    @Autowired
+    NotificationService  notificationService;
 
     @Autowired
     private Firestore firestore;
@@ -27,6 +30,7 @@ public class StreakService {
 
         // get last claimed date
         Map<String, Object> dailyBonus = (Map<String, Object>) doc.get("daily_bonus");
+
         String lastDate = dailyBonus != null ? (String) dailyBonus.get("claimed_date") : null;
 
         Long coins = doc.getLong("coins");
@@ -53,14 +57,23 @@ public class StreakService {
         Map<String, Object> updates = new HashMap<>();
         updates.put("coins", coins + reward);
         updates.put("streak_count", streak);
-
         Map<String, Object> bonus = new HashMap<>();
         bonus.put("claimed_date", today);
-
         updates.put("daily_bonus", bonus);
-
         ref.update(updates);
 
+        Map<String, Object> coinDetail = new HashMap<>();
+        coinDetail.put("amount", reward);
+        coinDetail.put("type", "Daily Streak");
+        coinDetail.put("status", "Credit");
+        coinDetail.put("istype","coin");
+        coinDetail.put("created_at", FieldValue.serverTimestamp());
+        ref.collection("coinDetails").add(coinDetail);
+        if (doc.exists()) {
+            String token=doc.getString("fcmToken");
+            notificationService.send(token,"🔥Awesome Streak!"+streak.intValue(),"Come back tomorrow for even more coins 🎉 "," "+reward+" 🪙");
+
+        }
         return Map.of(
                 "reward", reward,
                 "streak", streak
