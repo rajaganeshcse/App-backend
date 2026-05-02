@@ -100,6 +100,7 @@ public class SpinController {
         coinDetail.put("amount",reward);
         coinDetail.put("type", "Daily spin");
         coinDetail.put("status", "Credit");
+        coinDetail.put("istype","coin");
         coinDetail.put("created_at", FieldValue.serverTimestamp());
 
         DocumentReference userRef =

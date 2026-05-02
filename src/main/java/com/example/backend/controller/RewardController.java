@@ -82,6 +82,7 @@ public class RewardController {
             coinDetail.put("amount", coinReward);
             coinDetail.put("type", "ads");
             coinDetail.put("status", "Credit");
+            coinDetail.put("istype","coin");
             coinDetail.put("created_at", FieldValue.serverTimestamp());
             userRef.collection("coinDetails").add(coinDetail);
 
@@ -89,8 +90,9 @@ public class RewardController {
             ticketDetail.put("amount", ticketReward);
             ticketDetail.put("type", "ads");
             coinDetail.put("status", "Credit");
+            coinDetail.put("istype","token");
             ticketDetail.put("created_at", FieldValue.serverTimestamp());
-            userRef.collection("ticketDetails").add(ticketDetail);
+            userRef.collection("coinDetails").add(ticketDetail);
 
             // ✅ TRANSACTION
             Map<String, Object> txn = new HashMap<>();

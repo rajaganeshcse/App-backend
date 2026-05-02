@@ -66,6 +66,7 @@ public class AuthController {
                 coinDetail.put("amount", 100);
                 coinDetail.put("type", "welcome_bonus");
                 coinDetail.put("status", "Credit");
+                coinDetail.put("istype","coin");
                 coinDetail.put("created_at", FieldValue.serverTimestamp());
 
                 ref.collection("coinDetails").add(coinDetail);
@@ -74,10 +75,11 @@ public class AuthController {
                 Map<String, Object> ticketDetail = new HashMap<>();
                 ticketDetail.put("amount", 10);
                 ticketDetail.put("type", "welcome_bonus");
-                coinDetail.put("status", "Credit");
+                ticketDetail.put("status", "Credit");
+                ticketDetail.put("istype","token");
                 ticketDetail.put("created_at", FieldValue.serverTimestamp());
 
-                ref.collection("ticketDetails").add(ticketDetail);
+                ref.collection("coinDetails").add(ticketDetail);
             }
 
             return ResponseEntity.ok("Success");

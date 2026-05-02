@@ -75,6 +75,15 @@ public class DrawService {
 
                 tx.update(userRef, "tickets",
                         FieldValue.increment(-1));
+                Firestore db = FirestoreClient.getFirestore();
+                DocumentReference ref = db.collection("users").document(uid);
+                Map<String, Object> coinDetail = new HashMap<>();
+                coinDetail.put("amount", 1);
+                coinDetail.put("type", "Lucky Draw");
+                coinDetail.put("status", "Deducted");
+                coinDetail.put("istype","token");
+                coinDetail.put("created_at", FieldValue.serverTimestamp());
+                userRef.collection("coinDetails").add(coinDetail);
             }
 
             else if (!"AD".equals(entryType)) {
@@ -178,5 +187,13 @@ public class DrawService {
         db.collection("users")
                 .document(winnerUid)
                 .update("coins", FieldValue.increment(reward));
+        Map<String, Object> coinDetail = new HashMap<>();
+        coinDetail.put("amount", reward);
+        coinDetail.put("type", "Lucky Draw");
+        coinDetail.put("status", "Credit");
+        coinDetail.put("istype","coin");
+        coinDetail.put("created_at", FieldValue.serverTimestamp());
+        db.collection("users")
+                .document(winnerUid).collection("coinDetails").add(coinDetail);
     }
 }
