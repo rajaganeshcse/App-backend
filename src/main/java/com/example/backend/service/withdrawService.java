@@ -94,10 +94,8 @@ public class withdrawService {
             request.put("coinused", coinss);
             request.put("type", normalizedType);
             request.put("details", details);
+            request.put("created_at",FieldValue.serverTimestamp());
             request.put("status", "PENDING");
-
-            // ✅ IMPORTANT: timestamp
-            request.put("created_at", FieldValue.serverTimestamp());
 
             transaction.set(reqRef, request);
 
