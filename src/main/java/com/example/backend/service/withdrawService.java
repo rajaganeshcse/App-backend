@@ -101,6 +101,15 @@ public class withdrawService {
 
             transaction.set(reqRef, request);
 
+            Map<String, Object> coinDetail = new HashMap<>();
+            coinDetail.put("amount", coinss);
+            coinDetail.put("type", "Withdrawal");
+            coinDetail.put("status", "Deducted");
+            coinDetail.put("istype","coin");
+            coinDetail.put("created_at", FieldValue.serverTimestamp());
+            db.collection("users")
+                    .document(uid).collection("coinDetails").add(coinDetail);
+
             if (doc.exists()) {
                 String token=doc.getString("fcmToken");
                 notificationService.send(token,"Withdraw Submitted","Your withdrawal is in progress 💸 Please wait while we review and process it.","₹ "+amount);
