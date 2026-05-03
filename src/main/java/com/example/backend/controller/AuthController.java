@@ -38,6 +38,7 @@ public class AuthController {
             String uid = decoded.getUid();
             String name = decoded.getName();
             String email = decoded.getEmail();
+            String picture = decoded.getPicture();
 
             Firestore db = FirestoreClient.getFirestore();
             DocumentReference ref = db.collection("users").document(uid);
@@ -51,6 +52,8 @@ public class AuthController {
                 user.put("uid", uid);
                 user.put("name", name);
                 user.put("email", email);
+                user.put("profile_pic", picture); // ✅ FIX
+                user.put("streak_count", 0); // 🔥 also add this
 
                 // 🔐 MAIN BALANCE
                 user.put("coins", 100);
