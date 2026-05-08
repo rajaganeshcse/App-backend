@@ -115,5 +115,7 @@ public class StreakService {
             case 7: return 100;
             default: return 10;
         }
+
+
     }
 }
