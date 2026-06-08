@@ -19,7 +19,7 @@ public class live {
     public String live() {
         return "live";
     }
-    @GetMapping("temp/reedem")
+    @GetMapping("/temp/reedem")
     public String reedem(){
         return "Ganesh";
     }
