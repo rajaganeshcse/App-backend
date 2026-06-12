@@ -2,6 +2,7 @@ package com.example.backend.controller;
 
 import com.example.backend.model.LoginRequest;
 import com.example.backend.service.NotificationService;
+import com.example.backend.service.ReferralUtil;
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.FieldValue;
@@ -12,7 +13,6 @@ import com.google.firebase.cloud.FirestoreClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -22,6 +22,8 @@ public class AuthController {
 
     @Autowired
     NotificationService service;
+    @Autowired
+    ReferralUtil Referral;
 
     @GetMapping("/send")
     public String send(@RequestParam String token) throws Exception {
@@ -31,6 +33,9 @@ public class AuthController {
 
     @PostMapping("/auth")
     public ResponseEntity<?> auth(@RequestBody LoginRequest request) {
+
+
+
 
         try {
             FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(request.token);
@@ -47,13 +52,16 @@ public class AuthController {
 
             if (!doc.exists()) {
 
+                String code=Referral.generateCode();
+
                 Map<String, Object> user = new HashMap<>();
 
                 user.put("uid", uid);
                 user.put("name", name);
                 user.put("email", email);
                 user.put("profile_pic", picture); // ✅ FIX
-                user.put("streak_count", 0); // 🔥 also add this
+                user.put("streak_count", 0);
+                user.put("referralCode",code);// 🔥 also add this
 
                 // 🔐 MAIN BALANCE
                 user.put("coins", 100);

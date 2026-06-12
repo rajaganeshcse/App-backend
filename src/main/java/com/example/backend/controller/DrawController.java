@@ -31,7 +31,6 @@ public class DrawController {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "Invalid input"));
             }
-
             service.join(drawId, uid, type);
 
             return ResponseEntity.ok(Map.of("message", "Joined 🎟️"));
