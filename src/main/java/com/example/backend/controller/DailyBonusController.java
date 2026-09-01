@@ -59,7 +59,7 @@ public class DailyBonusController {
             // =====================================================
 
             if (authorization == null
-                    || authorization.isEmpty()) {
+                    || authorization.trim().isEmpty()) {
 
                 return ResponseEntity
                         .status(401)
@@ -75,13 +75,11 @@ public class DailyBonusController {
             // REMOVE BEARER
             // =====================================================
 
-            String token = authorization;
+            String token = authorization.trim();
 
             if (token.startsWith("Bearer ")) {
-                token = token.substring(7);
+                token = token.substring(7).trim();
             }
-
-            token = token.trim();
 
 
             if (token.isEmpty()) {
@@ -115,7 +113,7 @@ public class DailyBonusController {
 
 
             if (uid == null
-                    || uid.isEmpty()) {
+                    || uid.trim().isEmpty()) {
 
                 return ResponseEntity
                         .status(401)
@@ -134,18 +132,14 @@ public class DailyBonusController {
             String requestId = null;
 
             if (request != null) {
-
-                requestId =
-                        request.get("requestId");
+                requestId = request.get("requestId");
             }
 
-
             if (requestId == null
-                    || requestId.isEmpty()) {
+                    || requestId.trim().isEmpty()) {
 
                 requestId =
-                        UUID.randomUUID()
-                                .toString();
+                        UUID.randomUUID().toString();
             }
 
 
@@ -162,17 +156,189 @@ public class DailyBonusController {
                             .document(uid);
 
 
-            DocumentSnapshot userDoc =
-                    userRef
-                            .get()
-                            .get();
+            // =====================================================
+            // TODAY'S DATE
+            // =====================================================
+
+            LocalDate today =
+                    LocalDate.now(APP_ZONE);
+
+            String todayString =
+                    today.toString();
 
 
             // =====================================================
-            // USER CHECK
+            // RESULT HOLDER
             // =====================================================
 
-            if (!userDoc.exists()) {
+            Map<String, Object> result =
+                    db.runTransaction(transaction -> {
+
+                        // =============================================
+                        // GET USER INSIDE TRANSACTION
+                        // =============================================
+
+                        DocumentSnapshot userDoc =
+                                transaction
+                                        .get(userRef)
+                                        .get();
+
+
+                        // =============================================
+                        // USER CHECK
+                        // =============================================
+
+                        if (!userDoc.exists()) {
+
+                            Map<String, Object> error =
+                                    new HashMap<>();
+
+                            error.put(
+                                    "error",
+                                    "User not found"
+                            );
+
+                            return error;
+                        }
+
+
+                        // =============================================
+                        // CHECK LAST CLAIM DATE
+                        // =============================================
+
+                        String lastClaimDate =
+                                userDoc.getString(
+                                        "dailyBonusClaimDate"
+                                );
+
+
+                        // =============================================
+                        // ALREADY CLAIMED TODAY
+                        // =============================================
+
+                        if (todayString.equals(lastClaimDate)) {
+
+                            Map<String, Object> alreadyClaimed =
+                                    new HashMap<>();
+
+                            alreadyClaimed.put(
+                                    "alreadyClaimed",
+                                    true
+                            );
+
+                            alreadyClaimed.put(
+                                    "claimDate",
+                                    lastClaimDate
+                            );
+
+                            alreadyClaimed.put(
+                                    "today",
+                                    todayString
+                            );
+
+                            return alreadyClaimed;
+                        }
+
+
+                        // =============================================
+                        // CURRENT COINS
+                        // =============================================
+
+                        Long currentCoins =
+                                userDoc.getLong("coins");
+
+                        if (currentCoins == null) {
+                            currentCoins = 0L;
+                        }
+
+
+                        // =============================================
+                        // GENERATE RANDOM REWARD
+                        // =============================================
+
+                        int reward =
+                                ThreadLocalRandom
+                                        .current()
+                                        .nextInt(
+                                                MIN_REWARD,
+                                                MAX_REWARD + 1
+                                        );
+
+
+                        // =============================================
+                        // NEW COINS
+                        // =============================================
+
+                        long newCoins =
+                                currentCoins + reward;
+
+
+                        // =============================================
+                        // UPDATE USER
+                        // =============================================
+
+                        Map<String, Object> update =
+                                new HashMap<>();
+
+                        update.put(
+                                "coins",
+                                newCoins
+                        );
+
+                        update.put(
+                                "dailyBonusClaimDate",
+                                todayString
+                        );
+
+
+                        // =============================================
+                        // ATOMIC USER UPDATE
+                        // =============================================
+
+                        transaction.update(
+                                userRef,
+                                update
+                        );
+
+
+                        // =============================================
+                        // SUCCESS RESULT
+                        // =============================================
+
+                        Map<String, Object> success =
+                                new HashMap<>();
+
+                        success.put(
+                                "alreadyClaimed",
+                                false
+                        );
+
+                        success.put(
+                                "reward",
+                                reward
+                        );
+
+                        success.put(
+                                "coins",
+                                newCoins
+                        );
+
+                        success.put(
+                                "claimDate",
+                                todayString
+                        );
+
+                        return success;
+                    }).get();
+
+
+            // =====================================================
+            // USER NOT FOUND
+            // =====================================================
+
+            if ("User not found".equals(
+                    result.get("error")
+            )) {
 
                 return ResponseEntity
                         .status(404)
@@ -185,32 +351,15 @@ public class DailyBonusController {
 
 
             // =====================================================
-            // TODAY'S DATE
+            // ALREADY CLAIMED
             // =====================================================
 
-            LocalDate today =
-                    LocalDate.now(APP_ZONE);
-
-
-            String todayString =
-                    today.toString();
-
-
-            // =====================================================
-            // GET LAST CLAIM DATE
-            // =====================================================
-
-            String lastClaimDate =
-                    userDoc.getString(
-                            "dailyBonusClaimDate"
+            Boolean alreadyClaimed =
+                    (Boolean) result.get(
+                            "alreadyClaimed"
                     );
 
-
-            // =====================================================
-            // CHECK IF ALREADY CLAIMED TODAY
-            // =====================================================
-
-            if (todayString.equals(lastClaimDate)) {
+            if (Boolean.TRUE.equals(alreadyClaimed)) {
 
                 Map<String, Object> response =
                         new HashMap<>();
@@ -227,12 +376,12 @@ public class DailyBonusController {
 
                 response.put(
                         "claimDate",
-                        lastClaimDate
+                        result.get("claimDate")
                 );
 
                 response.put(
                         "today",
-                        todayString
+                        result.get("today")
                 );
 
                 return ResponseEntity
@@ -242,66 +391,16 @@ public class DailyBonusController {
 
 
             // =====================================================
-            // GENERATE RANDOM REWARD
+            // GET SUCCESS VALUES
             // =====================================================
 
             int reward =
-                    ThreadLocalRandom
-                            .current()
-                            .nextInt(
-                                    MIN_REWARD,
-                                    MAX_REWARD + 1
-                            );
-
-
-            // =====================================================
-            // CURRENT COINS
-            // =====================================================
-
-            Long currentCoins =
-                    userDoc.getLong("coins");
-
-
-            if (currentCoins == null) {
-                currentCoins = 0L;
-            }
-
-
-            // =====================================================
-            // NEW COINS
-            // =====================================================
+                    ((Number) result.get("reward"))
+                            .intValue();
 
             long newCoins =
-                    currentCoins + reward;
-
-
-            // =====================================================
-            // UPDATE USER
-            // =====================================================
-
-            Map<String, Object> update =
-                    new HashMap<>();
-
-
-            update.put(
-                    "coins",
-                    newCoins
-            );
-
-
-            // =====================================================
-            // CREATE / UPDATE DAILY BONUS DATE
-            // =====================================================
-
-            update.put(
-                    "dailyBonusClaimDate",
-                    todayString
-            );
-
-
-            userRef
-                    .update(update)
-                    .get();
+                    ((Number) result.get("coins"))
+                            .longValue();
 
 
             // =====================================================
@@ -310,7 +409,6 @@ public class DailyBonusController {
 
             Map<String, Object> coinDetail =
                     new HashMap<>();
-
 
             coinDetail.put(
                     "amount",
@@ -348,6 +446,10 @@ public class DailyBonusController {
             );
 
 
+            // =====================================================
+            // SAVE COIN HISTORY
+            // =====================================================
+
             userRef
                     .collection("coinDetails")
                     .add(coinDetail)
@@ -360,7 +462,6 @@ public class DailyBonusController {
 
             Map<String, Object> response =
                     new HashMap<>();
-
 
             response.put(
                     "success",
@@ -419,18 +520,15 @@ public class DailyBonusController {
         Map<String, Object> response =
                 new HashMap<>();
 
-
         response.put(
                 "success",
                 false
         );
 
-
         response.put(
                 "message",
                 message
         );
-
 
         return response;
     }
