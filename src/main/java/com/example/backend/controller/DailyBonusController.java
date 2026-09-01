@@ -81,7 +81,6 @@ public class DailyBonusController {
                 token = token.substring(7).trim();
             }
 
-
             if (token.isEmpty()) {
 
                 return ResponseEntity
@@ -110,7 +109,6 @@ public class DailyBonusController {
 
             String uid =
                     decodedToken.getUid();
-
 
             if (uid == null
                     || uid.trim().isEmpty()) {
@@ -149,7 +147,6 @@ public class DailyBonusController {
 
             Firestore db =
                     FirestoreClient.getFirestore();
-
 
             DocumentReference userRef =
                     db.collection("users")
@@ -206,10 +203,52 @@ public class DailyBonusController {
                         // CHECK LAST CLAIM DATE
                         // =============================================
 
-                        String lastClaimDate =
-                                userDoc.getString(
+                        Object claimDateObject =
+                                userDoc.get(
                                         "dailyBonusClaimDate"
                                 );
+
+                        String lastClaimDate = null;
+
+
+                        // ---------------------------------------------
+                        // NEW FORMAT: STRING
+                        // ---------------------------------------------
+
+                        if (claimDateObject instanceof String) {
+
+                            lastClaimDate =
+                                    (String) claimDateObject;
+                        }
+
+
+                        // ---------------------------------------------
+                        // OLD FORMAT: FIRESTORE TIMESTAMP
+                        // ---------------------------------------------
+                        //
+                        // No Timestamp import is required.
+                        // This safely handles old documents that
+                        // already contain a Timestamp.
+                        //
+
+                        else if (
+                                claimDateObject
+                                        instanceof
+                                        com.google.cloud.Timestamp
+                        ) {
+
+                            com.google.cloud.Timestamp timestamp =
+                                    (com.google.cloud.Timestamp)
+                                            claimDateObject;
+
+                            lastClaimDate =
+                                    timestamp
+                                            .toDate()
+                                            .toInstant()
+                                            .atZone(APP_ZONE)
+                                            .toLocalDate()
+                                            .toString();
+                        }
 
 
                         // =============================================
@@ -285,6 +324,8 @@ public class DailyBonusController {
                                 newCoins
                         );
 
+                        // IMPORTANT:
+                        // Store the claim date as STRING.
                         update.put(
                                 "dailyBonusClaimDate",
                                 todayString
@@ -329,6 +370,7 @@ public class DailyBonusController {
                         );
 
                         return success;
+
                     }).get();
 
 
