@@ -1,6 +1,5 @@
 package com.example.backend.controller;
 
-
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.FieldValue;
@@ -23,7 +22,10 @@ import java.util.concurrent.ThreadLocalRandom;
 @RequestMapping("/api")
 public class DailyBonusController {
 
-    // Change this to your application's timezone
+    // =========================================================
+    // CONFIG
+    // =========================================================
+
     private static final ZoneId APP_ZONE =
             ZoneId.of("Asia/Kolkata");
 
@@ -76,7 +78,6 @@ public class DailyBonusController {
             String token = authorization;
 
             if (token.startsWith("Bearer ")) {
-
                 token = token.substring(7);
             }
 
@@ -138,6 +139,7 @@ public class DailyBonusController {
                         request.get("requestId");
             }
 
+
             if (requestId == null
                     || requestId.isEmpty()) {
 
@@ -194,13 +196,6 @@ public class DailyBonusController {
                     today.toString();
 
 
-            // Example:
-            //
-            // 2026-09-02
-            //
-            // =====================================================
-
-
             // =====================================================
             // GET LAST CLAIM DATE
             // =====================================================
@@ -240,7 +235,6 @@ public class DailyBonusController {
                         todayString
                 );
 
-
                 return ResponseEntity
                         .status(409)
                         .body(response);
@@ -269,7 +263,6 @@ public class DailyBonusController {
 
 
             if (currentCoins == null) {
-
                 currentCoins = 0L;
             }
 
@@ -295,7 +288,11 @@ public class DailyBonusController {
                     newCoins
             );
 
-            // SAVE ONLY THE DATE
+
+            // =====================================================
+            // CREATE / UPDATE DAILY BONUS DATE
+            // =====================================================
+
             update.put(
                     "dailyBonusClaimDate",
                     todayString
@@ -422,15 +419,18 @@ public class DailyBonusController {
         Map<String, Object> response =
                 new HashMap<>();
 
+
         response.put(
                 "success",
                 false
         );
 
+
         response.put(
                 "message",
                 message
         );
+
 
         return response;
     }
