@@ -1,13 +1,13 @@
 package com.example.backend.controller;
 
 import com.example.backend.model.ScratchResponse;
+import com.example.backend.util.TokenUtil;
 
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/scratch")
@@ -20,17 +20,27 @@ public class ScratchController {
         this.scratchService = scratchService;
     }
 
-    @PostMapping("/play/{userId}")
-    public ScratchResponse playScratch(
-            @PathVariable String userId) {
-
-        return scratchService.playScratch(userId);
+    @PostMapping("/play")
+    public ResponseEntity<?> playScratch(@RequestHeader("Authorization") String token) {
+        try {
+            String userId = TokenUtil.verify(token);
+            ScratchResponse response = scratchService.playScratch(userId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Invalid or missing authorization token"));
+        }
     }
 
-    @GetMapping("/status/{userId}")
-    public ScratchResponse getScratchStatus(
-            @PathVariable String userId) {
-
-        return scratchService.getScratchStatus(userId);
+    @GetMapping("/status")
+    public ResponseEntity<?> getScratchStatus(@RequestHeader("Authorization") String token) {
+        try {
+            String userId = TokenUtil.verify(token);
+            ScratchResponse response = scratchService.getScratchStatus(userId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Invalid or missing authorization token"));
+        }
     }
 }
