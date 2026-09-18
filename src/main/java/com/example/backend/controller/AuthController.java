@@ -110,7 +110,20 @@ public class AuthController {
                 ref.collection("coinDetails").add(ticketDetail);
 
             } else {
-                // CASE B — EXISTING USER: Targeted update for loginTime & profile info (PRESERVES COINS, TICKETS, STREAKS, CREATED_AT)
+                // CASE B — EXISTING USER: Check account status first
+                String accountStatus = doc.getString("account");
+
+                if ("Deleted".equals(accountStatus)) {
+                    // Account has been permanently deleted
+                    return ResponseEntity.status(403).body("ACCOUNT_DELETED");
+                }
+
+                if ("Pending".equals(accountStatus)) {
+                    // Account is under deletion review
+                    return ResponseEntity.status(403).body("ACCOUNT_PENDING");
+                }
+
+                // Normal login — Targeted update for loginTime & profile info (PRESERVES COINS, TICKETS, STREAKS, CREATED_AT)
                 Map<String, Object> updates = new HashMap<>();
                 updates.put("loginTime", FieldValue.serverTimestamp());
 

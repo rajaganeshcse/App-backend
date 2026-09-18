@@ -66,6 +66,11 @@ public class DeleteAccountController {
                     .document(uid)
                     .set(request);
 
+            // 4. Mark user document: account = "Pending"
+            db.collection("users")
+                    .document(uid)
+                    .update("account", "Pending");
+
             System.out.println("[DeleteAccountController] Delete request submitted for uid: " + uid);
 
             return ResponseEntity.ok("Delete request submitted");

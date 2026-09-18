@@ -75,11 +75,17 @@ public class DeleteAccountJob {
                         // 3a. Delete sub-collection: coinDetails
                         deleteSubCollection(db, "users", uid, "coinDetails");
 
-                        // 3b. Delete main user document
+                        // 3b. Mark account as Deleted BEFORE removing (safety for edge-case race)
+                        try {
+                            db.collection("users").document(uid)
+                                    .update("account", "Deleted").get();
+                        } catch (Exception ignored) {}
+
+                        // 3c. Delete main user document
                         db.collection("users").document(uid).delete().get();
                         System.out.println("[DeleteAccountJob] Firestore user doc deleted: " + uid);
 
-                        // 3c. Delete Firebase Auth user
+                        // 3d. Delete Firebase Auth user
                         try {
                             FirebaseAuth.getInstance().deleteUser(uid);
                             System.out.println("[DeleteAccountJob] Firebase Auth user deleted: " + uid);
@@ -88,7 +94,7 @@ public class DeleteAccountJob {
                                     + ": " + authEx.getMessage());
                         }
 
-                        // 3d. Mark request as completed
+                        // 3e. Mark request as completed
                         db.collection("account_delete_requests")
                                 .document(uid)
                                 .update("status", "completed",
