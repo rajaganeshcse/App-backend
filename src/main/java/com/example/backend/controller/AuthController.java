@@ -18,32 +18,31 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
+@CrossOrigin
 public class AuthController {
 
     @Autowired
     NotificationService service;
+
     @Autowired
     ReferralUtil Referral;
 
     @GetMapping("/send")
     public String send(@RequestParam String token) throws Exception {
-        service.send(token, "🎉 Withdraw Success", "₹200 credited","100");
+        service.send(token, "🎉 Withdraw Success", "₹200 credited", "100");
         return "Sent";
     }
 
     @PostMapping("/auth")
     public ResponseEntity<?> auth(@RequestBody LoginRequest request) {
 
-
-
-
         try {
             FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(request.token);
 
             String uid = decoded.getUid();
-            String name = decoded.getName();
-            String email = decoded.getEmail();
-            String picture = decoded.getPicture();
+            String name = decoded.getName() != null ? decoded.getName() : "";
+            String email = decoded.getEmail() != null ? decoded.getEmail() : "";
+            String picture = decoded.getPicture() != null ? decoded.getPicture() : "";
 
             Firestore db = FirestoreClient.getFirestore();
             DocumentReference ref = db.collection("users").document(uid);
@@ -51,25 +50,43 @@ public class AuthController {
             DocumentSnapshot doc = ref.get().get();
 
             if (!doc.exists()) {
-
-                String code=Referral.generateCode();
+                // CASE A — NEW USER: Create user document with defaults & server timestamps
+                String code = Referral.generateCode();
 
                 Map<String, Object> user = new HashMap<>();
 
                 user.put("uid", uid);
                 user.put("name", name);
                 user.put("email", email);
-                user.put("profile_pic", picture); // ✅ FIX
-                user.put("streak_count", 0);
-                user.put("referralCode",code);// 🔥 also add this
+                user.put("profile_pic", picture);
+                user.put("referralCode", code);
 
-                // 🔐 MAIN BALANCE
+                // 🔐 MAIN BALANCE DEFAULTS
                 user.put("coins", 100);
                 user.put("tickets", 10);
 
-                user.put("created_at", FieldValue.serverTimestamp());
+                // 📊 COUNTERS & STREAK DEFAULTS
+                user.put("streak_count", 0);
+                user.put("dailySpinCount", 0);
+                user.put("dailyScratchCount", 0);
+                user.put("daily_ads_count", 0);
 
-                // ✅ SAVE USER
+                // 📅 DATE DEFAULTS
+                user.put("dailyBonusClaimDate", "");
+                user.put("dailyScratchDate", "");
+                user.put("lastSpinDate", "");
+
+                Map<String, Object> dailyBonusMap = new HashMap<>();
+                dailyBonusMap.put("claimed_date", "");
+                user.put("daily_bonus", dailyBonusMap);
+
+                user.put("fcmToken", "");
+
+                // ⏰ TIMESTAMPS
+                user.put("created_at", FieldValue.serverTimestamp());
+                user.put("loginTime", FieldValue.serverTimestamp());
+
+                // ✅ SAVE NEW USER
                 ref.set(user);
 
                 // ✅ COIN HISTORY
@@ -77,7 +94,7 @@ public class AuthController {
                 coinDetail.put("amount", 100);
                 coinDetail.put("type", "welcome_bonus");
                 coinDetail.put("status", "Credit");
-                coinDetail.put("istype","coin");
+                coinDetail.put("istype", "coin");
                 coinDetail.put("created_at", FieldValue.serverTimestamp());
 
                 ref.collection("coinDetails").add(coinDetail);
@@ -87,10 +104,21 @@ public class AuthController {
                 ticketDetail.put("amount", 10);
                 ticketDetail.put("type", "welcome_bonus");
                 ticketDetail.put("status", "Credit");
-                ticketDetail.put("istype","token");
+                ticketDetail.put("istype", "token");
                 ticketDetail.put("created_at", FieldValue.serverTimestamp());
 
                 ref.collection("coinDetails").add(ticketDetail);
+
+            } else {
+                // CASE B — EXISTING USER: Targeted update for loginTime & profile info (PRESERVES COINS, TICKETS, STREAKS, CREATED_AT)
+                Map<String, Object> updates = new HashMap<>();
+                updates.put("loginTime", FieldValue.serverTimestamp());
+
+                if (!name.isEmpty()) updates.put("name", name);
+                if (!email.isEmpty()) updates.put("email", email);
+                if (!picture.isEmpty()) updates.put("profile_pic", picture);
+
+                ref.update(updates);
             }
 
             return ResponseEntity.ok("Success");

@@ -8,20 +8,25 @@ public class Firebase_user {
     private String uid;
     private String name;
     private String email;
+    private String profile_pic;
 
     private long coins;
     private long tickets;
 
     private long streak_count;
     private long dailySpinCount;
+    private long dailyScratchCount;
     private long daily_ads_count;
 
     private String referralCode;
     private String lastSpinDate;
+    private String dailyScratchDate;
+    private String dailyBonusClaimDate;
 
     private String fcmToken;
 
     private Timestamp created_at;
+    private Timestamp loginTime;
 
     private Map<String, Object> daily_bonus;
     private Map<String, Object> game_ids;
@@ -61,6 +66,14 @@ public class Firebase_user {
         this.email = email;
     }
 
+    public String getProfile_pic() {
+        return profile_pic;
+    }
+
+    public void setProfile_pic(String profile_pic) {
+        this.profile_pic = profile_pic;
+    }
+
     public long getCoins() {
         return coins;
     }
@@ -93,6 +106,14 @@ public class Firebase_user {
         this.dailySpinCount = dailySpinCount;
     }
 
+    public long getDailyScratchCount() {
+        return dailyScratchCount;
+    }
+
+    public void setDailyScratchCount(long dailyScratchCount) {
+        this.dailyScratchCount = dailyScratchCount;
+    }
+
     public long getDaily_ads_count() {
         return daily_ads_count;
     }
@@ -117,6 +138,22 @@ public class Firebase_user {
         this.lastSpinDate = lastSpinDate;
     }
 
+    public String getDailyScratchDate() {
+        return dailyScratchDate;
+    }
+
+    public void setDailyScratchDate(String dailyScratchDate) {
+        this.dailyScratchDate = dailyScratchDate;
+    }
+
+    public String getDailyBonusClaimDate() {
+        return dailyBonusClaimDate;
+    }
+
+    public void setDailyBonusClaimDate(String dailyBonusClaimDate) {
+        this.dailyBonusClaimDate = dailyBonusClaimDate;
+    }
+
     public String getFcmToken() {
         return fcmToken;
     }
@@ -131,6 +168,14 @@ public class Firebase_user {
 
     public void setCreated_at(Timestamp created_at) {
         this.created_at = created_at;
+    }
+
+    public Timestamp getLoginTime() {
+        return loginTime;
+    }
+
+    public void setLoginTime(Timestamp loginTime) {
+        this.loginTime = loginTime;
     }
 
     public Map<String, Object> getDaily_bonus() {
