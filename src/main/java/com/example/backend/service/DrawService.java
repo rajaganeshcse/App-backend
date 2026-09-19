@@ -363,6 +363,15 @@ public class DrawService {
 
         checkWinner(drawId);
 
+        long remainingTickets = 0L;
+        try {
+            DocumentSnapshot updatedUser = db.collection("users").document(uid).get().get();
+            if (updatedUser.exists()) {
+                Long t = updatedUser.getLong("tickets");
+                if (t != null) remainingTickets = t;
+            }
+        } catch (Exception ignored) {}
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", ("AD".equalsIgnoreCase(type))
@@ -370,6 +379,8 @@ public class DrawService {
                 : "Joined with " + count + " Ticket(s) 🎟️");
         response.put("drawId", drawId);
         response.put("ticketsEntered", ticketQty);
+        response.put("ticketsDeducted", ("TICKET".equalsIgnoreCase(type)) ? ticketQty : 0);
+        response.put("remainingTickets", remainingTickets);
         response.put("tokens", createdTokens);
         return response;
     }
