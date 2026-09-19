@@ -11,10 +11,10 @@ class TokenGeneratorTest {
 
     @Test
     void testTokenFormatAndLength() {
-        String token = TokenGenerator.generate10CharToken();
+        String token = TokenGenerator.generateToken();
         Assertions.assertNotNull(token);
-        Assertions.assertEquals(10, token.length());
-        Assertions.assertTrue(token.matches("^[A-Z0-9]{10}$"), "Token must consist of exactly 10 uppercase A-Z and 0-9 characters");
+        Assertions.assertEquals(5, token.length());
+        Assertions.assertTrue(token.matches("^[A-Z0-9]{5}$"), "Token must consist of exactly 5 uppercase A-Z and 0-9 characters");
     }
 
     @Test
@@ -22,11 +22,11 @@ class TokenGeneratorTest {
         int count = 1000;
         Set<String> tokens = new HashSet<>();
         for (int i = 0; i < count; i++) {
-            String token = TokenGenerator.generate10CharToken();
-            Assertions.assertEquals(10, token.length());
-            Assertions.assertTrue(token.matches("^[A-Z0-9]{10}$"));
+            String token = TokenGenerator.generateToken();
+            Assertions.assertEquals(5, token.length());
+            Assertions.assertTrue(token.matches("^[A-Z0-9]{5}$"));
             tokens.add(token);
         }
-        Assertions.assertEquals(count, tokens.size(), "All 1,000 generated 10-character tokens must be unique");
+        Assertions.assertEquals(count, tokens.size(), "All 1,000 generated 5-character tokens must be unique");
     }
 }
