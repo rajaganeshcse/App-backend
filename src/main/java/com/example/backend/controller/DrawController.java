@@ -31,9 +31,22 @@ public class DrawController {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "Invalid input"));
             }
-            service.join(drawId, uid, type);
 
-            return ResponseEntity.ok(Map.of("message", "Joined 🎟️"));
+            Integer countObj = null;
+            if (req.get("count") != null) {
+                countObj = ((Number) req.get("count")).intValue();
+            } else if (req.get("quantity") != null) {
+                countObj = ((Number) req.get("quantity")).intValue();
+            }
+            int count = (countObj != null && countObj > 0) ? countObj : 1;
+
+            service.join(drawId, uid, type, count);
+
+            String msg = ("AD".equalsIgnoreCase(type))
+                    ? "Joined with Free Ad entry 🎟️"
+                    : "Joined with " + count + " Ticket(s) 🎟️";
+
+            return ResponseEntity.ok(Map.of("message", msg));
 
         } catch (Exception e) {
             return ResponseEntity.badRequest()

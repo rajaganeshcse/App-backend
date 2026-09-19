@@ -20,7 +20,12 @@ public class DrawService {
     /* ================= JOIN DRAW ================= */
 
     public void join(String drawId, String uid, String type) throws Exception {
+        join(drawId, uid, type, 1);
+    }
 
+    public void join(String drawId, String uid, String type, int count) throws Exception {
+
+        final int ticketQty = ("TICKET".equalsIgnoreCase(type)) ? Math.max(count, 1) : 1;
         final String entryType = type == null ? "" : type.toUpperCase();
 
         DocumentReference userRef = db.collection("users").document(uid);
@@ -58,7 +63,7 @@ public class DrawService {
 
             String status = draw.getString("status");
 
-            System.out.println("ENTRY TYPE = " + entryType);
+            System.out.println("ENTRY TYPE = " + entryType + " QTY = " + ticketQty);
             System.out.println("USER TICKETS BEFORE = " + userTickets);
 
             if (!"OPEN".equalsIgnoreCase(status))
@@ -68,20 +73,19 @@ public class DrawService {
 
             if ("TICKET".equals(entryType)) {
 
-                if (userTickets < 1)
-                    throw new RuntimeException("Not enough tickets");
+                if (userTickets < ticketQty)
+                    throw new RuntimeException("Not enough tickets. Available: " + userTickets);
 
-                System.out.println("Deducting 1 ticket...");
+                System.out.println("Deducting " + ticketQty + " ticket(s)...");
 
                 tx.update(userRef, "tickets",
-                        FieldValue.increment(-1));
-                Firestore db = FirestoreClient.getFirestore();
-                DocumentReference ref = db.collection("users").document(uid);
+                        FieldValue.increment(-ticketQty));
+
                 Map<String, Object> coinDetail = new HashMap<>();
-                coinDetail.put("amount", 1);
+                coinDetail.put("amount", ticketQty);
                 coinDetail.put("type", "Lucky Draw");
                 coinDetail.put("status", "Deducted");
-                coinDetail.put("istype","token");
+                coinDetail.put("istype", "token");
                 coinDetail.put("created_at", FieldValue.serverTimestamp());
                 userRef.collection("coinDetails").add(coinDetail);
             }
@@ -92,30 +96,31 @@ public class DrawService {
 
             /* ================= CHECK LIMIT ================= */
 
-            if (filled + 1 > total)
-                throw new RuntimeException("Draw full");
+            if (filled + ticketQty > total)
+                throw new RuntimeException("Not enough slots remaining in this draw");
 
-            /* ================= CREATE ENTRY ================= */
+            /* ================= CREATE ENTRIES ================= */
 
-            long ticketNumber = filled + 1;
+            for (int i = 0; i < ticketQty; i++) {
+                long ticketNumber = filled + 1 + i;
+                String ticketId = UUID.randomUUID().toString();
 
-            String ticketId = UUID.randomUUID().toString();
+                Map<String, Object> data = new HashMap<>();
+                data.put("ticketId", ticketId);
+                data.put("uid", uid);
+                data.put("drawId", drawId);
+                data.put("type", entryType);
+                data.put("ticketNumber", ticketNumber);
+                data.put("createdAt", FieldValue.serverTimestamp());
 
-            Map<String, Object> data = new HashMap<>();
-            data.put("ticketId", ticketId);
-            data.put("uid", uid);
-            data.put("drawId", drawId);
-            data.put("type", entryType);
-            data.put("ticketNumber", ticketNumber);
-            data.put("createdAt", FieldValue.serverTimestamp());
+                tx.set(ticketRef.document(ticketId), data);
 
-            tx.set(ticketRef.document(ticketId), data);
-
-            tx.set(userRef.collection("myTickets")
-                    .document(ticketId), data);
+                tx.set(userRef.collection("myTickets")
+                        .document(ticketId), data);
+            }
 
             tx.update(drawRef, "filledSlots",
-                    FieldValue.increment(1));
+                    FieldValue.increment(ticketQty));
 
             return null;
 
