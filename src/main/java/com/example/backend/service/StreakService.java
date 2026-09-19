@@ -12,6 +12,14 @@ import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * StreakService — Handles Daily Streak claim logic on the backend.
+ *
+ * Fixes Applied:
+ *  - Disassociated from daily_bonus (uses independent streak_claimed_date & daily_streak keys)
+ *  - Leaves daily_bonus untouched so Daily Bonus card on home screen is completely independent
+ *  - Calculates 7-day cycle progressive rewards (+10, +20, +30, +40, +50, +75, +100)
+ */
 @Service
 public class StreakService {
 
@@ -32,11 +40,27 @@ public class StreakService {
         LocalDate todayDate = LocalDate.now(ZoneId.of("Asia/Kolkata"));
         String today = todayDate.toString();
 
-        // Get last claimed date
-        Map<String, Object> dailyBonus = (Map<String, Object>) doc.get("daily_bonus");
-        String lastDate = dailyBonus != null ? (String) dailyBonus.get("claimed_date") : null;
+        // Get last claimed date for STREAK (not daily_bonus)
+        String lastDate = doc.getString("streak_claimed_date");
+        if (lastDate == null) {
+            lastDate = doc.getString("last_streak_date");
+        }
+        if (lastDate == null) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> dailyStreakMap = (Map<String, Object>) doc.get("daily_streak");
+            if (dailyStreakMap != null) {
+                lastDate = (String) dailyStreakMap.get("claimed_date");
+            }
+        }
 
-        LocalDate lastClaimDate = lastDate != null ? LocalDate.parse(lastDate) : null;
+        LocalDate lastClaimDate = null;
+        if (lastDate != null && !lastDate.trim().isEmpty()) {
+            try {
+                // If timestamp format e.g. 2026-09-19T10:00:00, extract 10-char date part
+                String cleanDate = lastDate.length() >= 10 ? lastDate.substring(0, 10) : lastDate;
+                lastClaimDate = LocalDate.parse(cleanDate);
+            } catch (Exception ignored) {}
+        }
 
         Long coins = doc.getLong("coins");
         if (coins == null) coins = 0L;
@@ -50,8 +74,8 @@ public class StreakService {
         }
 
         // 🔥 Midnight Reset Logic
-        // If user missed even 1 day → reset streak to 0
-        if (lastClaimDate == null || !lastClaimDate.plusDays(1).equals(todayDate)) {
+        // If user missed even 1 day (last claim was prior to yesterday) → reset streak to 0
+        if (lastClaimDate != null && !lastClaimDate.plusDays(1).equals(todayDate)) {
             streak = 0L;
         }
 
@@ -62,15 +86,16 @@ public class StreakService {
         int cycleDay = (int) ((streak - 1) % 7 + 1);
         int reward = getReward(cycleDay);
 
-        // 🔄 Update Firestore
+        // 🔄 Update Firestore (independent streak keys)
         Map<String, Object> updates = new HashMap<>();
         updates.put("coins", coins + reward);
         updates.put("streak_count", streak);
+        updates.put("streak_claimed_date", today);
+        updates.put("last_streak_date", today);
 
-        Map<String, Object> bonus = new HashMap<>();
-        bonus.put("claimed_date", today);
-
-        updates.put("daily_bonus", bonus);
+        Map<String, Object> streakMap = new HashMap<>();
+        streakMap.put("claimed_date", today);
+        updates.put("daily_streak", streakMap);
 
         ref.update(updates);
 
@@ -89,7 +114,7 @@ public class StreakService {
         if (token != null && !token.isEmpty()) {
             notificationService.send(
                     token,
-                    "🔥 Awesome Streak! " + streak,
+                    "🔥 Awesome Streak! " + streak + " Days",
                     "Come back tomorrow for even more coins 🎉",
                     reward + " 🪙"
             );
@@ -98,7 +123,8 @@ public class StreakService {
         // 📤 Response
         return Map.of(
                 "reward", reward,
-                "streak", streak
+                "streak", streak,
+                "claimedToday", true
         );
     }
 
@@ -114,7 +140,5 @@ public class StreakService {
             case 7: return 100;
             default: return 10;
         }
-
-
     }
 }

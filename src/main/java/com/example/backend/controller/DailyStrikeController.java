@@ -13,6 +13,14 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
 
+/**
+ * DailyStrikeController — Backend Endpoints for Daily Streak Feature.
+ *
+ * Fixes Applied:
+ *  - Disassociated from daily_bonus (uses independent streak_claimed_date & daily_streak keys)
+ *  - GET /api/streak-status is strictly READ-ONLY and NEVER resets streak_count to 0 on Firestore
+ *  - Handles raw token stripping ("Bearer ") safely
+ */
 @RestController
 @RequestMapping("/api")
 public class DailyStrikeController {
@@ -21,16 +29,19 @@ public class DailyStrikeController {
     private StreakService service;
 
     @Autowired
-    private Firestore firestore; // ✅ FIXED
+    private Firestore firestore;
 
-    // 🔥 CLAIM API
+    // 🔥 CLAIM STREAK API
     @PostMapping("/claim-streak")
     public ResponseEntity<?> claim(
             @RequestHeader("Authorization") String token) {
 
         try {
+            String rawToken = (token != null && token.startsWith("Bearer "))
+                    ? token.substring(7).trim() : token;
+
             FirebaseToken decoded =
-                    FirebaseAuth.getInstance().verifyIdToken(token);
+                    FirebaseAuth.getInstance().verifyIdToken(rawToken);
 
             String uid = decoded.getUid();
 
@@ -45,21 +56,23 @@ public class DailyStrikeController {
         }
     }
 
-    // 🔥 STATUS API
+    // 🔥 STREAK STATUS API (READ-ONLY)
     @GetMapping("/streak-status")
     public ResponseEntity<?> getStatus(
             @RequestHeader("Authorization") String token) {
 
         try {
+            String rawToken = (token != null && token.startsWith("Bearer "))
+                    ? token.substring(7).trim() : token;
+
             FirebaseToken decoded =
-                    FirebaseAuth.getInstance().verifyIdToken(token);
+                    FirebaseAuth.getInstance().verifyIdToken(rawToken);
 
             String uid = decoded.getUid();
 
             DocumentSnapshot doc =
                     firestore.collection("users").document(uid).get().get();
 
-            // ❌ user not found
             if (!doc.exists()) {
                 return ResponseEntity.badRequest().body(
                         Map.of("error", "User not found")
@@ -69,28 +82,28 @@ public class DailyStrikeController {
             Long streak = doc.getLong("streak_count");
             if (streak == null) streak = 0L;
 
-            Map<String, Object> dailyBonus =
-                    (Map<String, Object>) doc.get("daily_bonus");
+            String lastDate = doc.getString("streak_claimed_date");
+            if (lastDate == null) {
+                lastDate = doc.getString("last_streak_date");
+            }
+            if (lastDate == null) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> dailyStreakMap = (Map<String, Object>) doc.get("daily_streak");
+                if (dailyStreakMap != null) {
+                    lastDate = (String) dailyStreakMap.get("claimed_date");
+                }
+            }
 
             LocalDate todayDate = LocalDate.now(ZoneId.of("Asia/Kolkata"));
             String today = todayDate.toString();
-            String yesterday = todayDate.minusDays(1).toString();
-
-            String lastDate = dailyBonus != null
-                    ? (String) dailyBonus.get("claimed_date")
-                    : null;
 
             boolean claimedToday = today.equals(lastDate);
 
-            // 🔥 Reset streak to 0 if previous day was missed (neither claimed today nor yesterday)
-            if (streak > 0 && !claimedToday && !yesterday.equals(lastDate)) {
-                streak = 0L;
-                firestore.collection("users").document(uid).update("streak_count", 0L);
-            }
-
+            // Strictly read-only status query — NEVER reset streak to 0 on GET!
             return ResponseEntity.ok(
                     Map.of(
                             "streak", streak,
+                            "streak_count", streak,
                             "claimedToday", claimedToday
                     )
             );
