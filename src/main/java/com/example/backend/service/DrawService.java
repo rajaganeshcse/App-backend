@@ -4,12 +4,13 @@ import com.example.backend.util.TokenGenerator;
 import com.google.cloud.firestore.*;
 import com.google.firebase.cloud.FirestoreClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 @Service
 public class DrawService {
@@ -23,16 +24,176 @@ public class DrawService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private final Map<String, Object> drawLocks = new ConcurrentHashMap<>();
 
-    /* ================= JOIN DRAW ================= */
+    // ── DEFAULT CONFIG PRESETS ─────────────────────────────────────────────
+    public static final List<Map<String, Long>> SUPPORTED_PRESETS = List.of(
+            Map.of("participationLimit", 5L,   "rewardCoins", 25L,   "ticketCost", 5L),
+            Map.of("participationLimit", 10L,  "rewardCoins", 100L,  "ticketCost", 10L),
+            Map.of("participationLimit", 20L,  "rewardCoins", 200L,  "ticketCost", 20L),
+            Map.of("participationLimit", 25L,  "rewardCoins", 250L,  "ticketCost", 25L),
+            Map.of("participationLimit", 50L,  "rewardCoins", 500L,  "ticketCost", 50L),
+            Map.of("participationLimit", 100L, "rewardCoins", 1000L, "ticketCost", 100L)
+    );
 
-    public Map<String, Object> join(String drawId, String uid, String type) throws Exception {
-        return join(drawId, uid, type, 1);
+    /* ================= STARTUP INITIALIZATION ================= */
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        try {
+            System.out.println("🚀 [DrawService] Checking for active OPEN draw on startup...");
+            getOrCreateActiveDraw();
+        } catch (Exception e) {
+            System.err.println("❌ [DrawService] Failed to initialize active draw on startup: " + e.getMessage());
+        }
     }
 
-    public Map<String, Object> join(String drawId, String uid, String type, int count) throws Exception {
+    /* ================= GET OR CREATE ACTIVE DRAW ================= */
+
+    public synchronized Map<String, Object> getOrCreateActiveDraw() throws Exception {
+        QuerySnapshot openDraws = db.collection("lucky_draws")
+                .whereEqualTo("status", "OPEN")
+                .limit(1)
+                .get()
+                .get();
+
+        if (!openDraws.isEmpty()) {
+            DocumentSnapshot doc = openDraws.getDocuments().get(0);
+            Map<String, Object> data = doc.getData();
+            if (data == null) data = new HashMap<>();
+            data.put("id", doc.getId());
+            return data;
+        }
+
+        // No OPEN draw exists — create next draw automatically
+        return createNextDrawInternal();
+    }
+
+    private synchronized Map<String, Object> createNextDrawInternal() throws Exception {
+        // Double check open draws to ensure exactly 1 OPEN draw
+        QuerySnapshot openCheck = db.collection("lucky_draws")
+                .whereEqualTo("status", "OPEN")
+                .limit(1)
+                .get()
+                .get();
+
+        if (!openCheck.isEmpty()) {
+            DocumentSnapshot doc = openCheck.getDocuments().get(0);
+            Map<String, Object> data = doc.getData();
+            if (data == null) data = new HashMap<>();
+            data.put("id", doc.getId());
+            return data;
+        }
+
+        // Read current admin config
+        Map<String, Object> adminConfig = getAdminConfigInternal();
+
+        long participationLimit = Optional.ofNullable((Long) adminConfig.get("participationLimit")).orElse(10L);
+        long rewardCoins = Optional.ofNullable((Long) adminConfig.get("rewardCoins")).orElse(100L);
+        long ticketCost = Optional.ofNullable((Long) adminConfig.get("ticketCost")).orElse(10L);
+
+        // Get next sequential draw number atomically
+        DocumentReference counterRef = db.collection("counters").document("lucky_draw");
+
+        long nextDrawNumber = db.runTransaction(tx -> {
+            DocumentSnapshot counterDoc = tx.get(counterRef).get();
+            long currentNum = 0L;
+            if (counterDoc.exists() && counterDoc.getLong("lastDrawNumber") != null) {
+                currentNum = counterDoc.getLong("lastDrawNumber");
+            }
+            long nextNum = currentNum + 1L;
+            Map<String, Object> counterData = new HashMap<>();
+            counterData.put("lastDrawNumber", nextNum);
+            counterData.put("updatedAt", FieldValue.serverTimestamp());
+            tx.set(counterRef, counterData, SetOptions.merge());
+            return nextNum;
+        }).get();
+
+        String drawId = "DRAW" + nextDrawNumber;
+
+        DocumentReference drawRef = db.collection("lucky_draws").document(drawId);
+
+        Map<String, Object> drawData = new HashMap<>();
+        drawData.put("drawId", drawId);
+        drawData.put("drawNumber", nextDrawNumber);
+        drawData.put("status", "OPEN");
+
+        drawData.put("participationLimit", participationLimit);
+        drawData.put("rewardCoins", rewardCoins);
+        drawData.put("ticketCost", ticketCost);
+
+        drawData.put("currentParticipation", 0L);
+        drawData.put("filledSlots", 0L);
+        drawData.put("totalSlots", participationLimit);
+        drawData.put("remainingSlots", participationLimit);
+        drawData.put("isCompleted", false);
+
+        drawData.put("createdAt", FieldValue.serverTimestamp());
+
+        drawRef.set(drawData).get();
+
+        System.out.println("✅ Automatically created active draw " + drawId
+                + " [Limit=" + participationLimit + ", Reward=" + rewardCoins + ", Cost=" + ticketCost + "]");
+
+        drawData.put("id", drawId);
+        return drawData;
+    }
+
+    /* ================= ADMIN CONFIG ================= */
+
+    public Map<String, Object> getAdminConfigInternal() {
+        try {
+            DocumentSnapshot doc = db.collection("lucky_draw_config").document("current").get().get();
+            if (doc.exists() && doc.getData() != null) {
+                return doc.getData();
+            }
+        } catch (Exception e) {
+            System.err.println("Warning: Failed to read lucky_draw_config: " + e.getMessage());
+        }
+
+        // Default configuration preset
+        Map<String, Object> defaultConfig = new HashMap<>();
+        defaultConfig.put("participationLimit", 10L);
+        defaultConfig.put("rewardCoins", 100L);
+        defaultConfig.put("ticketCost", 10L);
+        return defaultConfig;
+    }
+
+    public Map<String, Object> updateAdminConfig(long participationLimit, long rewardCoins, long ticketCost, String updatedBy) throws Exception {
+        if (participationLimit <= 0 || rewardCoins <= 0 || ticketCost <= 0) {
+            throw new IllegalArgumentException("Participation, reward, and ticket cost must be positive numbers.");
+        }
+
+        Map<String, Object> config = new HashMap<>();
+        config.put("participationLimit", participationLimit);
+        config.put("rewardCoins", rewardCoins);
+        config.put("ticketCost", ticketCost);
+        config.put("updatedAt", FieldValue.serverTimestamp());
+        config.put("updatedBy", updatedBy != null ? updatedBy : "ADMIN");
+
+        // 1. Update current config
+        db.collection("lucky_draw_config").document("current").set(config).get();
+
+        // 2. Save history snapshot
+        db.collection("lucky_draw_config_history").document().set(config);
+
+        System.out.println("⚙️ Admin configuration updated [Participation=" + participationLimit
+                + ", Reward=" + rewardCoins + ", Cost=" + ticketCost + "]");
+
+        return config;
+    }
+
+    /* ================= JOIN DRAW ================= */
+
+    public Map<String, Object> join(String inputDrawId, String uid, String type, int count) throws Exception {
 
         final int ticketQty = ("TICKET".equalsIgnoreCase(type)) ? Math.max(count, 1) : 1;
         final String entryType = type == null ? "" : type.toUpperCase();
+
+        // If drawId not provided, locate currently active draw
+        String drawId = inputDrawId;
+        if (drawId == null || drawId.isEmpty()) {
+            Map<String, Object> active = getOrCreateActiveDraw();
+            drawId = (String) active.get("drawId");
+        }
 
         DocumentReference userRef = db.collection("users").document(uid);
         DocumentReference drawRef = db.collection("lucky_draws").document(drawId);
@@ -57,6 +218,8 @@ public class DrawService {
         List<Map<String, Object>> createdTickets = new ArrayList<>();
         List<String> createdTokens = new ArrayList<>();
 
+        final String targetDrawId = drawId;
+
         /* ================= TRANSACTION ================= */
 
         db.runTransaction(tx -> {
@@ -72,8 +235,11 @@ public class DrawService {
             }
 
             long userTickets = Optional.ofNullable(user.getLong("tickets")).orElse(0L);
-            long filled = Optional.ofNullable(draw.getLong("filledSlots")).orElse(0L);
-            long total = Optional.ofNullable(draw.getLong("totalSlots")).orElse(0L);
+            long filled = Optional.ofNullable(draw.getLong("filledSlots"))
+                    .orElseGet(() -> Optional.ofNullable(draw.getLong("currentParticipation")).orElse(0L));
+            long total = Optional.ofNullable(draw.getLong("totalSlots"))
+                    .orElseGet(() -> Optional.ofNullable(draw.getLong("participationLimit")).orElse(10L));
+            long ticketCost = Optional.ofNullable(draw.getLong("ticketCost")).orElse(1L);
 
             String status = draw.getString("status");
 
@@ -81,18 +247,20 @@ public class DrawService {
                 throw new RuntimeException("Draw closed");
             }
 
-            /* ================= TICKET ENTRY ================= */
+            /* ================= TICKET DEDUCTION ================= */
 
             if ("TICKET".equals(entryType)) {
-                if (userTickets < ticketQty) {
-                    throw new RuntimeException("Not enough tickets. Available: " + userTickets);
+                long requiredTickets = ticketQty * ticketCost;
+                if (userTickets < requiredTickets) {
+                    throw new RuntimeException("Not enough tickets. Required: " + requiredTickets + ", Available: " + userTickets);
                 }
 
-                tx.update(userRef, "tickets", FieldValue.increment(-ticketQty));
+                tx.update(userRef, "tickets", FieldValue.increment(-requiredTickets));
 
                 Map<String, Object> coinDetail = new HashMap<>();
-                coinDetail.put("amount", ticketQty);
-                coinDetail.put("type", "Lucky Draw");
+                coinDetail.put("amount", requiredTickets);
+                coinDetail.put("type", "Lucky Draw Entry");
+                coinDetail.put("drawId", targetDrawId);
                 coinDetail.put("status", "Deducted");
                 coinDetail.put("istype", "token");
                 coinDetail.put("created_at", FieldValue.serverTimestamp());
@@ -101,13 +269,13 @@ public class DrawService {
                 throw new RuntimeException("Invalid entry type");
             }
 
-            /* ================= CHECK LIMIT ================= */
+            /* ================= CAPACITY CHECK ================= */
 
             if (filled + ticketQty > total) {
                 throw new RuntimeException("Not enough slots remaining in this draw (" + (total - filled) + " left)");
             }
 
-            /* ================= FETCH EXISTING TOKENS FOR UNIQUENESS ================= */
+            /* ================= FETCH EXISTING TOKENS ================= */
 
             Set<String> existingTokens = new HashSet<>();
             try {
@@ -120,7 +288,7 @@ public class DrawService {
                 }
             } catch (Exception ignored) {}
 
-            /* ================= GENERATE UNIQUE 10-CHAR TOKENS & CREATE ENTRIES ================= */
+            /* ================= GENERATE 10-CHAR TOKENS ================= */
 
             for (int i = 0; i < ticketQty; i++) {
                 long ticketNumber = filled + 1 + i;
@@ -132,8 +300,7 @@ public class DrawService {
                     token = TokenGenerator.generate10CharToken();
                     attempts++;
                     if (attempts > 100) {
-                        token = TokenGenerator.generate10CharToken() + (i % 10);
-                        token = token.substring(0, 10);
+                        token = TokenGenerator.generate10CharToken();
                     }
                 } while (existingTokens.contains(token));
 
@@ -144,7 +311,7 @@ public class DrawService {
                 data.put("ticketId", ticketId);
                 data.put("uid", uid);
                 data.put("userId", uid);
-                data.put("drawId", drawId);
+                data.put("drawId", targetDrawId);
                 data.put("type", entryType);
                 data.put("token", token);
                 data.put("status", "ACTIVE");
@@ -158,7 +325,14 @@ public class DrawService {
                 createdTickets.add(data);
             }
 
-            tx.update(drawRef, "filledSlots", FieldValue.increment(ticketQty));
+            long newFilled = filled + ticketQty;
+            long newRemaining = Math.max(0, total - newFilled);
+
+            tx.update(drawRef,
+                    "filledSlots", newFilled,
+                    "currentParticipation", newFilled,
+                    "remainingSlots", newRemaining
+            );
 
             return null;
 
@@ -192,8 +366,10 @@ public class DrawService {
 
             if (!draw.exists()) return;
 
-            long filled = Optional.ofNullable(draw.getLong("filledSlots")).orElse(0L);
-            long total = Optional.ofNullable(draw.getLong("totalSlots")).orElse(0L);
+            long filled = Optional.ofNullable(draw.getLong("filledSlots"))
+                    .orElseGet(() -> Optional.ofNullable(draw.getLong("currentParticipation")).orElse(0L));
+            long total = Optional.ofNullable(draw.getLong("totalSlots"))
+                    .orElseGet(() -> Optional.ofNullable(draw.getLong("participationLimit")).orElse(10L));
 
             if (filled < total) return;
 
@@ -201,7 +377,6 @@ public class DrawService {
             Boolean isCompleted = draw.getBoolean("isCompleted");
 
             if ("COMPLETED".equalsIgnoreCase(status) || "CLOSED".equalsIgnoreCase(status) || Boolean.TRUE.equals(isCompleted)) {
-                System.out.println("Draw " + drawId + " already completed/closed.");
                 return;
             }
 
@@ -220,7 +395,6 @@ public class DrawService {
             List<QueryDocumentSnapshot> eligibleTickets = querySnapshot.getDocuments();
 
             if (eligibleTickets.isEmpty()) {
-                /* Fallback: fetch all tickets regardless of status */
                 eligibleTickets = ticketRef.get().get().getDocuments();
             }
 
@@ -239,22 +413,11 @@ public class DrawService {
             Long winnerTicketNumber = winningTicket.getLong("ticketNumber");
             String winningTicketId = winningTicket.getId();
 
-            /* REWARD SELECTION */
-            long rewardCoins = 0L;
-            List<?> rewardsList = (List<?>) draw.get("rewards");
-            if (rewardsList != null && !rewardsList.isEmpty()) {
-                Object selectedRewardObj = rewardsList.get(SECURE_RANDOM.nextInt(rewardsList.size()));
-                if (selectedRewardObj instanceof Map) {
-                    Object amtObj = ((Map<?, ?>) selectedRewardObj).get("amount");
-                    if (amtObj instanceof Number) {
-                        rewardCoins = ((Number) amtObj).longValue();
-                    }
-                } else if (selectedRewardObj instanceof Number) {
-                    rewardCoins = ((Number) selectedRewardObj).longValue();
-                }
-            } else {
-                rewardCoins = Optional.ofNullable(draw.getLong("rewardCoins")).orElse(0L);
-            }
+            /* REWARD SELECTION FROM DRAW'S FROZEN CONFIGURATION */
+            long rewardCoins = Optional.ofNullable(draw.getLong("rewardCoins")).orElse(100L);
+            long participationLimit = Optional.ofNullable(draw.getLong("participationLimit")).orElse(total);
+            long ticketCost = Optional.ofNullable(draw.getLong("ticketCost")).orElse(10L);
+            long drawNumber = Optional.ofNullable(draw.getLong("drawNumber")).orElse(0L);
 
             final String finalWinnerUid = winnerUid;
             final String finalWinningToken = (winningToken != null) ? winningToken : "TOKEN_N/A";
@@ -266,7 +429,6 @@ public class DrawService {
             db.runTransaction(tx -> {
 
                 DocumentReference userRef = db.collection("users").document(finalWinnerUid);
-                DocumentSnapshot userDoc = tx.get(userRef).get();
 
                 /* 1. Update winning ticket */
                 DocumentReference winTicketRef = ticketRef.document(finalTicketId);
@@ -307,6 +469,10 @@ public class DrawService {
                 DocumentReference historyRef = db.collection("drawHistory").document(drawId);
                 Map<String, Object> historyData = new HashMap<>();
                 historyData.put("drawId", drawId);
+                historyData.put("drawNumber", drawNumber);
+                historyData.put("participationLimit", participationLimit);
+                historyData.put("rewardCoins", finalRewardCoins);
+                historyData.put("ticketCost", ticketCost);
                 historyData.put("winningTicketId", finalTicketId);
                 historyData.put("winningUserId", finalWinnerUid);
                 historyData.put("winnerUid", finalWinnerUid);
@@ -314,7 +480,6 @@ public class DrawService {
                 historyData.put("winnerTicketNumber", finalTicketNumber);
                 historyData.put("rewardType", "COINS");
                 historyData.put("rewardAmount", finalRewardCoins);
-                historyData.put("rewardCoins", finalRewardCoins);
                 historyData.put("status", "COMPLETED");
                 historyData.put("completedAt", FieldValue.serverTimestamp());
 
@@ -360,7 +525,14 @@ public class DrawService {
                 System.out.println("Failed to send FCM notification: " + e.getMessage());
             }
 
-            System.out.println("LuckyDraw " + drawId + " completed successfully! Winning Token: " + finalWinningToken + " Winner: " + finalWinnerUid);
+            System.out.println("🎉 LuckyDraw " + drawId + " COMPLETED! Winner: " + finalWinnerUid + " Token: " + finalWinningToken);
+
+            /* ================= AUTOMATICALLY CREATE NEXT DRAW ================= */
+            try {
+                createNextDrawInternal();
+            } catch (Exception e) {
+                System.err.println("❌ Failed to create next draw automatically: " + e.getMessage());
+            }
         }
     }
 
@@ -374,13 +546,20 @@ public class DrawService {
 
         Map<String, Object> result = new HashMap<>();
         result.put("drawId", drawId);
+        result.put("drawNumber", draw.get("drawNumber"));
         result.put("status", draw.getString("status"));
+        result.put("participationLimit", Optional.ofNullable(draw.getLong("participationLimit")).orElse(10L));
+        result.put("rewardCoins", Optional.ofNullable(draw.getLong("rewardCoins")).orElse(100L));
+        result.put("ticketCost", Optional.ofNullable(draw.getLong("ticketCost")).orElse(10L));
+        result.put("currentParticipation", Optional.ofNullable(draw.getLong("currentParticipation"))
+                .orElseGet(() -> Optional.ofNullable(draw.getLong("filledSlots")).orElse(0L)));
         result.put("filledSlots", Optional.ofNullable(draw.getLong("filledSlots")).orElse(0L));
-        result.put("totalSlots", Optional.ofNullable(draw.getLong("totalSlots")).orElse(0L));
-        result.put("rewardCoins", Optional.ofNullable(draw.getLong("rewardCoins")).orElse(0L));
+        result.put("totalSlots", Optional.ofNullable(draw.getLong("totalSlots")).orElse(10L));
+        result.put("remainingSlots", Optional.ofNullable(draw.getLong("remainingSlots")).orElse(10L));
         result.put("winningToken", draw.getString("winningToken"));
         result.put("winnerUid", draw.getString("winnerUid"));
         result.put("isCompleted", Optional.ofNullable(draw.getBoolean("isCompleted")).orElse(false));
+        result.put("createdAt", draw.get("createdAt"));
         result.put("completedAt", draw.get("completedAt"));
         return result;
     }
@@ -395,6 +574,7 @@ public class DrawService {
         result.put("drawId", drawId);
         result.put("status", draw.getString("status"));
         result.put("winningToken", draw.getString("winningToken"));
+        result.put("winnerUid", draw.getString("winnerUid"));
         result.put("winnerTicketNumber", draw.get("winnerTicketNumber"));
         result.put("rewardCoins", Optional.ofNullable(draw.getLong("rewardCoins")).orElse(0L));
         result.put("completedAt", draw.get("completedAt"));

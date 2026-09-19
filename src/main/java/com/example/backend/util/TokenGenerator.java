@@ -5,11 +5,11 @@ import java.security.SecureRandom;
 public class TokenGenerator {
 
     private static final String CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    private static final int LENGTH = 5;
+    private static final int LENGTH = 10;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     /**
-     * Generates a cryptographically secure 5-character token consisting of
+     * Generates a cryptographically secure 10-character token consisting of
      * uppercase characters A-Z and digits 0-9.
      */
     public static String generateToken() {
@@ -22,12 +22,12 @@ public class TokenGenerator {
     }
 
     /** Alias for backward compatibility */
-    public static String generate5CharToken() {
+    public static String generate10CharToken() {
         return generateToken();
     }
 
     /** Alias for backward compatibility */
-    public static String generate10CharToken() {
+    public static String generate5CharToken() {
         return generateToken();
     }
 }
