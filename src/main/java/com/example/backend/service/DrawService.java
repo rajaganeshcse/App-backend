@@ -68,6 +68,12 @@ public class DrawService {
                 Map<String, Object> data = doc.getData();
                 if (data == null) data = new HashMap<>();
                 data.put("id", doc.getId());
+                Object existingCost = data.get("ticketCost");
+                if (existingCost == null || ((Number) existingCost).longValue() != 1L) {
+                    db.collection("lucky_draws").document(doc.getId()).update("ticketCost", 1L);
+                    data.put("ticketCost", 1L);
+                    System.out.println("🔧 Enforced ticketCost=1 for active draw " + doc.getId());
+                }
                 activeDraws.add(data);
             } else {
                 Map<String, Object> newDraw = createDrawForPreset(limit, reward, cost);
@@ -129,9 +135,11 @@ public class DrawService {
         drawData.put("drawNumber", nextDrawNumber);
         drawData.put("status", "OPEN");
 
+        long effectiveCost = (ticketCost <= 0) ? 1L : ticketCost;
+
         drawData.put("participationLimit", participationLimit);
         drawData.put("rewardCoins", rewardCoins);
-        drawData.put("ticketCost", ticketCost);
+        drawData.put("ticketCost", effectiveCost);
 
         drawData.put("currentParticipation", 0L);
         drawData.put("filledSlots", 0L);
