@@ -26,12 +26,12 @@ public class DrawService {
 
     // ── DEFAULT CONFIG PRESETS ─────────────────────────────────────────────
     public static final List<Map<String, Long>> SUPPORTED_PRESETS = List.of(
-            Map.of("participationLimit", 5L,   "rewardCoins", 25L,   "ticketCost", 5L),
-            Map.of("participationLimit", 10L,  "rewardCoins", 100L,  "ticketCost", 10L),
-            Map.of("participationLimit", 20L,  "rewardCoins", 200L,  "ticketCost", 20L),
-            Map.of("participationLimit", 25L,  "rewardCoins", 250L,  "ticketCost", 25L),
-            Map.of("participationLimit", 50L,  "rewardCoins", 500L,  "ticketCost", 50L),
-            Map.of("participationLimit", 100L, "rewardCoins", 1000L, "ticketCost", 100L)
+            Map.of("participationLimit", 5L,   "rewardCoins", 25L,   "ticketCost", 1L),
+            Map.of("participationLimit", 10L,  "rewardCoins", 100L,  "ticketCost", 1L),
+            Map.of("participationLimit", 20L,  "rewardCoins", 200L,  "ticketCost", 1L),
+            Map.of("participationLimit", 25L,  "rewardCoins", 250L,  "ticketCost", 1L),
+            Map.of("participationLimit", 50L,  "rewardCoins", 500L,  "ticketCost", 1L),
+            Map.of("participationLimit", 100L, "rewardCoins", 1000L, "ticketCost", 1L)
     );
 
     /* ================= STARTUP INITIALIZATION ================= */

@@ -14,15 +14,15 @@ class DrawServiceTest {
     void testSupportedPresets() {
         Assertions.assertEquals(6, DrawService.SUPPORTED_PRESETS.size());
         
-        // 5 -> 25 / 5
+        // 5 -> 25 / 1
         Assertions.assertEquals(5L, DrawService.SUPPORTED_PRESETS.get(0).get("participationLimit"));
         Assertions.assertEquals(25L, DrawService.SUPPORTED_PRESETS.get(0).get("rewardCoins"));
-        Assertions.assertEquals(5L, DrawService.SUPPORTED_PRESETS.get(0).get("ticketCost"));
+        Assertions.assertEquals(1L, DrawService.SUPPORTED_PRESETS.get(0).get("ticketCost"));
 
-        // 100 -> 1000 / 100
+        // 100 -> 1000 / 1
         Assertions.assertEquals(100L, DrawService.SUPPORTED_PRESETS.get(5).get("participationLimit"));
         Assertions.assertEquals(1000L, DrawService.SUPPORTED_PRESETS.get(5).get("rewardCoins"));
-        Assertions.assertEquals(100L, DrawService.SUPPORTED_PRESETS.get(5).get("ticketCost"));
+        Assertions.assertEquals(1L, DrawService.SUPPORTED_PRESETS.get(5).get("ticketCost"));
     }
 
     @Test
