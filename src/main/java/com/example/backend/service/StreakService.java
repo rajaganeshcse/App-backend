@@ -55,13 +55,12 @@ public class StreakService {
             streak = 0L;
         }
 
-        // ✅ Today claim → increment
+        // ✅ Today claim → increment total continuous streak count
         streak++;
 
-        // Loop after 7 days
-        if (streak > 7) streak = 1L;
-
-        int reward = getReward(streak.intValue());
+        // Calculate 1..7 cycle day position for reward lookup
+        int cycleDay = (int) ((streak - 1) % 7 + 1);
+        int reward = getReward(cycleDay);
 
         // 🔄 Update Firestore
         Map<String, Object> updates = new HashMap<>();

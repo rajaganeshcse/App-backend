@@ -72,13 +72,21 @@ public class DailyStrikeController {
             Map<String, Object> dailyBonus =
                     (Map<String, Object>) doc.get("daily_bonus");
 
-            String today = LocalDate.now(ZoneId.of("Asia/Kolkata")).toString();
+            LocalDate todayDate = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+            String today = todayDate.toString();
+            String yesterday = todayDate.minusDays(1).toString();
 
             String lastDate = dailyBonus != null
                     ? (String) dailyBonus.get("claimed_date")
                     : null;
 
             boolean claimedToday = today.equals(lastDate);
+
+            // 🔥 Reset streak to 0 if previous day was missed (neither claimed today nor yesterday)
+            if (streak > 0 && !claimedToday && !yesterday.equals(lastDate)) {
+                streak = 0L;
+                firestore.collection("users").document(uid).update("streak_count", 0L);
+            }
 
             return ResponseEntity.ok(
                     Map.of(
