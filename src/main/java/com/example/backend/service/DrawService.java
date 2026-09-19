@@ -166,7 +166,7 @@ public class DrawService {
         Map<String, Object> defaultConfig = new HashMap<>();
         defaultConfig.put("participationLimit", 10L);
         defaultConfig.put("rewardCoins", 100L);
-        defaultConfig.put("ticketCost", 10L);
+        defaultConfig.put("ticketCost", 1L);
         return defaultConfig;
     }
 
@@ -429,7 +429,7 @@ public class DrawService {
             /* REWARD SELECTION FROM DRAW'S FROZEN CONFIGURATION */
             long rewardCoins = Optional.ofNullable(draw.getLong("rewardCoins")).orElse(100L);
             long participationLimit = Optional.ofNullable(draw.getLong("participationLimit")).orElse(total);
-            long ticketCost = Optional.ofNullable(draw.getLong("ticketCost")).orElse(10L);
+            long ticketCost = Optional.ofNullable(draw.getLong("ticketCost")).orElse(1L);
             long drawNumber = Optional.ofNullable(draw.getLong("drawNumber")).orElse(0L);
 
             final String finalWinnerUid = winnerUid;
@@ -563,7 +563,7 @@ public class DrawService {
         result.put("status", draw.getString("status"));
         result.put("participationLimit", Optional.ofNullable(draw.getLong("participationLimit")).orElse(10L));
         result.put("rewardCoins", Optional.ofNullable(draw.getLong("rewardCoins")).orElse(100L));
-        result.put("ticketCost", Optional.ofNullable(draw.getLong("ticketCost")).orElse(10L));
+        result.put("ticketCost", Optional.ofNullable(draw.getLong("ticketCost")).orElse(1L));
         result.put("currentParticipation", Optional.ofNullable(draw.getLong("currentParticipation"))
                 .orElseGet(() -> Optional.ofNullable(draw.getLong("filledSlots")).orElse(0L)));
         result.put("filledSlots", Optional.ofNullable(draw.getLong("filledSlots")).orElse(0L));
