@@ -67,15 +67,16 @@ public class DrawAdminController {
         }
     }
 
-    /* ================= GET LIVE ACTIVE DRAW ================= */
+    /* ================= GET LIVE ACTIVE DRAWS ================= */
 
     @GetMapping("/active")
     public ResponseEntity<?> getActiveDraw() {
         try {
-            Map<String, Object> activeDraw = service.getOrCreateActiveDraw();
+            List<Map<String, Object>> activeDraws = service.getAllActiveDraws();
             return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "draw", activeDraw
+                    "draws", activeDraws,
+                    "draw", activeDraws.isEmpty() ? Map.of() : activeDraws.get(0)
             ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(

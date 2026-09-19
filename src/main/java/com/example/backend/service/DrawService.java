@@ -39,38 +39,58 @@ public class DrawService {
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         try {
-            System.out.println("🚀 [DrawService] Checking for active OPEN draw on startup...");
-            getOrCreateActiveDraw();
+            System.out.println("🚀 [DrawService] Ensuring active OPEN draws exist for all preset categories on startup...");
+            ensureAllPresetDrawsExist();
         } catch (Exception e) {
-            System.err.println("❌ [DrawService] Failed to initialize active draw on startup: " + e.getMessage());
+            System.err.println("❌ [DrawService] Failed to initialize active preset draws on startup: " + e.getMessage());
         }
     }
 
-    /* ================= GET OR CREATE ACTIVE DRAW ================= */
+    /* ================= GET OR CREATE ACTIVE DRAWS FOR ALL PRESETS ================= */
 
-    public synchronized Map<String, Object> getOrCreateActiveDraw() throws Exception {
-        QuerySnapshot openDraws = db.collection("lucky_draws")
-                .whereEqualTo("status", "OPEN")
-                .limit(1)
-                .get()
-                .get();
+    public synchronized List<Map<String, Object>> ensureAllPresetDrawsExist() throws Exception {
+        List<Map<String, Object>> activeDraws = new ArrayList<>();
 
-        if (!openDraws.isEmpty()) {
-            DocumentSnapshot doc = openDraws.getDocuments().get(0);
-            Map<String, Object> data = doc.getData();
-            if (data == null) data = new HashMap<>();
-            data.put("id", doc.getId());
-            return data;
+        for (Map<String, Long> preset : SUPPORTED_PRESETS) {
+            long limit = preset.get("participationLimit");
+            long reward = preset.get("rewardCoins");
+            long cost = preset.get("ticketCost");
+
+            QuerySnapshot openForPreset = db.collection("lucky_draws")
+                    .whereEqualTo("status", "OPEN")
+                    .whereEqualTo("participationLimit", limit)
+                    .limit(1)
+                    .get()
+                    .get();
+
+            if (!openForPreset.isEmpty()) {
+                DocumentSnapshot doc = openForPreset.getDocuments().get(0);
+                Map<String, Object> data = doc.getData();
+                if (data == null) data = new HashMap<>();
+                data.put("id", doc.getId());
+                activeDraws.add(data);
+            } else {
+                Map<String, Object> newDraw = createDrawForPreset(limit, reward, cost);
+                activeDraws.add(newDraw);
+            }
         }
-
-        // No OPEN draw exists — create next draw automatically
-        return createNextDrawInternal();
+        return activeDraws;
     }
 
-    private synchronized Map<String, Object> createNextDrawInternal() throws Exception {
-        // Double check open draws to ensure exactly 1 OPEN draw
+    public Map<String, Object> getOrCreateActiveDraw() throws Exception {
+        List<Map<String, Object>> activeList = ensureAllPresetDrawsExist();
+        return activeList.isEmpty() ? new HashMap<>() : activeList.get(0);
+    }
+
+    public List<Map<String, Object>> getAllActiveDraws() throws Exception {
+        return ensureAllPresetDrawsExist();
+    }
+
+    public synchronized Map<String, Object> createDrawForPreset(long participationLimit, long rewardCoins, long ticketCost) throws Exception {
+        // Double check open draws for this preset to prevent duplicate OPEN draws for the same preset
         QuerySnapshot openCheck = db.collection("lucky_draws")
                 .whereEqualTo("status", "OPEN")
+                .whereEqualTo("participationLimit", participationLimit)
                 .limit(1)
                 .get()
                 .get();
@@ -82,13 +102,6 @@ public class DrawService {
             data.put("id", doc.getId());
             return data;
         }
-
-        // Read current admin config
-        Map<String, Object> adminConfig = getAdminConfigInternal();
-
-        long participationLimit = Optional.ofNullable((Long) adminConfig.get("participationLimit")).orElse(10L);
-        long rewardCoins = Optional.ofNullable((Long) adminConfig.get("rewardCoins")).orElse(100L);
-        long ticketCost = Optional.ofNullable((Long) adminConfig.get("ticketCost")).orElse(10L);
 
         // Get next sequential draw number atomically
         DocumentReference counterRef = db.collection("counters").document("lucky_draw");
@@ -131,7 +144,7 @@ public class DrawService {
         drawRef.set(drawData).get();
 
         System.out.println("✅ Automatically created active draw " + drawId
-                + " [Limit=" + participationLimit + ", Reward=" + rewardCoins + ", Cost=" + ticketCost + "]");
+                + " [Preset Category: Limit=" + participationLimit + ", Reward=" + rewardCoins + ", Cost=" + ticketCost + "]");
 
         drawData.put("id", drawId);
         return drawData;
@@ -527,11 +540,11 @@ public class DrawService {
 
             System.out.println("🎉 LuckyDraw " + drawId + " COMPLETED! Winner: " + finalWinnerUid + " Token: " + finalWinningToken);
 
-            /* ================= AUTOMATICALLY CREATE NEXT DRAW ================= */
+            /* ================= AUTOMATICALLY CREATE NEXT DRAW FOR THIS PRESET ================= */
             try {
-                createNextDrawInternal();
+                createDrawForPreset(participationLimit, rewardCoins, ticketCost);
             } catch (Exception e) {
-                System.err.println("❌ Failed to create next draw automatically: " + e.getMessage());
+                System.err.println("❌ Failed to create next draw for preset (" + participationLimit + ") automatically: " + e.getMessage());
             }
         }
     }

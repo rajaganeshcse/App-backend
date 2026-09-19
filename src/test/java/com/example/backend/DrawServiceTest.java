@@ -26,12 +26,12 @@ class DrawServiceTest {
     }
 
     @Test
-    void testTokenFormatValidation() {
+    void test5DigitTokenFormatValidation() {
         for (int i = 0; i < 500; i++) {
             String token = TokenGenerator.generateToken();
             Assertions.assertNotNull(token);
-            Assertions.assertEquals(10, token.length());
-            Assertions.assertTrue(token.matches("^[A-Z0-9]{10}$"), "Token must match ^[A-Z0-9]{10}$");
+            Assertions.assertEquals(5, token.length(), "Token length must be 5 digits");
+            Assertions.assertTrue(token.matches("^[A-Z0-9]{5}$"), "Token must match ^[A-Z0-9]{5}$");
         }
     }
 
