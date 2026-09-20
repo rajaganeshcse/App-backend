@@ -6,24 +6,42 @@ import com.example.backend.model.NotificationSendRequest;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.*;
 import com.google.firebase.messaging.*;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
-public class NotificationService {
+public class NotificationService implements InitializingBean {
 
     @Autowired
     private Firestore firestore;
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
 
+    private boolean listenerInitialized = false;
+
+    @Override
+    public void afterPropertiesSet() throws Exception {
+        initFirestoreNotificationListener();
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        initFirestoreNotificationListener();
+    }
+
     @PostConstruct
-    public void initFirestoreNotificationListener() {
+    public synchronized void initFirestoreNotificationListener() {
+        if (listenerInitialized) return;
+        listenerInitialized = true;
+
         System.out.println("🔥 Listening to Firestore 'notifications' collection for pending FCM dispatches...");
         try {
             firestore.collection("notifications")
