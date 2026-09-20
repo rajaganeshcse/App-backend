@@ -27,7 +27,6 @@ public class NotificationService {
         System.out.println("🔥 Listening to Firestore 'notifications' collection for pending FCM dispatches...");
         try {
             firestore.collection("notifications")
-                    .whereEqualTo("status", "PENDING")
                     .addSnapshotListener((snapshots, e) -> {
                         if (e != null) {
                             System.err.println("❌ Firestore notification listener error: " + e.getMessage());
@@ -35,21 +34,24 @@ public class NotificationService {
                         }
                         if (snapshots != null && !snapshots.isEmpty()) {
                             for (DocumentChange dc : snapshots.getDocumentChanges()) {
-                                if (dc.getType() == DocumentChange.Type.ADDED) {
+                                if (dc.getType() == DocumentChange.Type.ADDED || dc.getType() == DocumentChange.Type.MODIFIED) {
                                     DocumentSnapshot doc = dc.getDocument();
-                                    NotificationSendRequest req = new NotificationSendRequest();
-                                    req.setTitle(doc.getString("title"));
-                                    req.setMessage(doc.getString("message"));
-                                    req.setImageUrl(doc.getString("imageUrl"));
-                                    req.setNotificationType(doc.getString("notificationType"));
-                                    req.setScreen(doc.getString("screen"));
-                                    req.setAudience(doc.getString("audience"));
-                                    req.setTargetUserId(doc.getString("targetUserId"));
-                                    req.setCreatedBy(doc.getString("createdBy"));
+                                    String status = doc.getString("status");
+                                    if ("PENDING".equalsIgnoreCase(status)) {
+                                        NotificationSendRequest req = new NotificationSendRequest();
+                                        req.setTitle(doc.getString("title"));
+                                        req.setMessage(doc.getString("message"));
+                                        req.setImageUrl(doc.getString("imageUrl"));
+                                        req.setNotificationType(doc.getString("notificationType"));
+                                        req.setScreen(doc.getString("screen"));
+                                        req.setAudience(doc.getString("audience"));
+                                        req.setTargetUserId(doc.getString("targetUserId"));
+                                        req.setCreatedBy(doc.getString("createdBy"));
 
-                                    String notifId = doc.getId();
-                                    System.out.println("📬 Dispatching pending notification from Firestore: " + notifId);
-                                    sendNotificationWithId(notifId, req);
+                                        String notifId = doc.getId();
+                                        System.out.println("📬 Dispatching pending notification from Firestore: " + notifId);
+                                        sendNotificationWithId(notifId, req);
+                                    }
                                 }
                             }
                         }
@@ -125,26 +127,36 @@ public class NotificationService {
         int successCount = 0;
         int failureCount = 0;
 
+        String img = record.getImageUrl();
+        boolean isValidHttpUrl = img != null && (img.startsWith("http://") || img.startsWith("https://")) && !img.startsWith("blob:");
+
         int batchSize = 500;
         for (int i = 0; i < tokens.size(); i += batchSize) {
             List<String> batchTokens = tokens.subList(i, Math.min(i + batchSize, tokens.size()));
 
+            com.google.firebase.messaging.Notification.Builder notifBuilder = com.google.firebase.messaging.Notification.builder()
+                    .setTitle(record.getTitle())
+                    .setBody(record.getMessage());
+            if (isValidHttpUrl) {
+                notifBuilder.setImage(img);
+            }
+
+            AndroidNotification.Builder androidNotifBuilder = AndroidNotification.builder()
+                    .setTitle(record.getTitle())
+                    .setBody(record.getMessage())
+                    .setChannelId("earning_notifications")
+                    .setSound("default");
+            if (isValidHttpUrl) {
+                androidNotifBuilder.setImage(img);
+            }
+
             MulticastMessage.Builder builder = MulticastMessage.builder()
                     .addAllTokens(batchTokens)
                     .putAllData(dataPayload)
-                    .setNotification(com.google.firebase.messaging.Notification.builder()
-                            .setTitle(record.getTitle())
-                            .setBody(record.getMessage())
-                            .setImage(record.getImageUrl() != null && !record.getImageUrl().trim().isEmpty() ? record.getImageUrl() : null)
-                            .build())
+                    .setNotification(notifBuilder.build())
                     .setAndroidConfig(AndroidConfig.builder()
                             .setPriority(AndroidConfig.Priority.HIGH)
-                            .setNotification(AndroidNotification.builder()
-                                    .setTitle(record.getTitle())
-                                    .setBody(record.getMessage())
-                                    .setChannelId("earning_notifications")
-                                    .setSound("default")
-                                    .build())
+                            .setNotification(androidNotifBuilder.build())
                             .build());
 
             try {
