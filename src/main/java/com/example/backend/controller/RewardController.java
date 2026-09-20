@@ -67,8 +67,26 @@ public class RewardController {
                 return ResponseEntity.badRequest().body("Duplicate request");
             }
 
-            int coinReward = 10;
-            int ticketReward = 1;
+            long currentAdIndex = ads + 1;
+            int coinReward;
+            int ticketReward;
+
+            if (currentAdIndex <= 3) {
+                coinReward = 10;
+                ticketReward = 1;
+            } else if (currentAdIndex <= 5) {
+                coinReward = 15;
+                ticketReward = 1;
+            } else if (currentAdIndex <= 7) {
+                coinReward = 20;
+                ticketReward = 1;
+            } else if (currentAdIndex <= 9) {
+                coinReward = 25;
+                ticketReward = 1;
+            } else {
+                coinReward = 50;
+                ticketReward = 2;
+            }
 
             // ✅ UPDATE
             userRef.update(
@@ -89,8 +107,8 @@ public class RewardController {
             Map<String, Object> ticketDetail = new HashMap<>();
             ticketDetail.put("amount", ticketReward);
             ticketDetail.put("type", "ads");
-            coinDetail.put("status", "Credit");
-            coinDetail.put("istype","token");
+            ticketDetail.put("status", "Credit");
+            ticketDetail.put("istype","token");
             ticketDetail.put("created_at", FieldValue.serverTimestamp());
             userRef.collection("coinDetails").add(ticketDetail);
 
@@ -105,7 +123,15 @@ public class RewardController {
 
             db.collection("transactions").add(txn);
 
-            return ResponseEntity.ok("Reward added");
+            Map<String, Object> resMap = new HashMap<>();
+            resMap.put("success", true);
+            resMap.put("message", "Reward added successfully!");
+            resMap.put("coinReward", coinReward);
+            resMap.put("ticketReward", ticketReward);
+            resMap.put("totalCoins", coins + coinReward);
+            resMap.put("totalTickets", tickets + ticketReward);
+
+            return ResponseEntity.ok(resMap);
 
         } catch (Exception e) {
             e.printStackTrace(); // 🔥 VERY IMPORTANT
