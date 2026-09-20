@@ -4,18 +4,13 @@ import com.example.backend.model.DailyNotificationSettings;
 import com.example.backend.model.NotificationRecord;
 import com.example.backend.model.NotificationSendRequest;
 import com.google.api.core.ApiFuture;
-import com.google.cloud.firestore.DocumentSnapshot;
-import com.google.cloud.firestore.FieldValue;
-import com.google.cloud.firestore.Firestore;
-import com.google.cloud.firestore.QueryDocumentSnapshot;
-import com.google.cloud.firestore.QuerySnapshot;
-import com.google.cloud.firestore.SetOptions;
+import com.google.cloud.firestore.*;
 import com.google.firebase.messaging.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -26,6 +21,43 @@ public class NotificationService {
     private Firestore firestore;
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
+
+    @PostConstruct
+    public void initFirestoreNotificationListener() {
+        System.out.println("🔥 Listening to Firestore 'notifications' collection for pending FCM dispatches...");
+        try {
+            firestore.collection("notifications")
+                    .whereEqualTo("status", "PENDING")
+                    .addSnapshotListener((snapshots, e) -> {
+                        if (e != null) {
+                            System.err.println("❌ Firestore notification listener error: " + e.getMessage());
+                            return;
+                        }
+                        if (snapshots != null && !snapshots.isEmpty()) {
+                            for (DocumentChange dc : snapshots.getDocumentChanges()) {
+                                if (dc.getType() == DocumentChange.Type.ADDED) {
+                                    DocumentSnapshot doc = dc.getDocument();
+                                    NotificationSendRequest req = new NotificationSendRequest();
+                                    req.setTitle(doc.getString("title"));
+                                    req.setMessage(doc.getString("message"));
+                                    req.setImageUrl(doc.getString("imageUrl"));
+                                    req.setNotificationType(doc.getString("notificationType"));
+                                    req.setScreen(doc.getString("screen"));
+                                    req.setAudience(doc.getString("audience"));
+                                    req.setTargetUserId(doc.getString("targetUserId"));
+                                    req.setCreatedBy(doc.getString("createdBy"));
+
+                                    String notifId = doc.getId();
+                                    System.out.println("📬 Dispatching pending notification from Firestore: " + notifId);
+                                    sendNotificationWithId(notifId, req);
+                                }
+                            }
+                        }
+                    });
+        } catch (Exception e) {
+            System.err.println("⚠️ Could not initialize Firestore snapshot listener: " + e.getMessage());
+        }
+    }
 
     public void send(String token, String title, String body, String amount) throws Exception {
         Map<String, String> data = new HashMap<>();
@@ -44,40 +76,45 @@ public class NotificationService {
     }
 
     public NotificationRecord sendNotification(NotificationSendRequest request) {
-        String notificationId = UUID.randomUUID().toString();
+        String notificationId = "notif_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 6);
+        return sendNotificationWithId(notificationId, request);
+    }
+
+    public NotificationRecord sendNotificationWithId(String notificationId, NotificationSendRequest request) {
         String nowIso = ISO_FORMATTER.format(Instant.now());
 
         NotificationRecord record = new NotificationRecord();
         record.setNotificationId(notificationId);
-        record.setTitle(request.getTitle());
-        record.setMessage(request.getMessage());
+        record.setTitle(request.getTitle() != null ? request.getTitle() : "Rewards Planet 🌟");
+        record.setMessage(request.getMessage() != null ? request.getMessage() : "Claim your daily rewards now!");
         record.setImageUrl(request.getImageUrl() != null ? request.getImageUrl() : "");
         record.setNotificationType(request.getNotificationType() != null ? request.getNotificationType() : "PROMOTION");
         record.setScreen(request.getScreen() != null ? request.getScreen() : "HOME");
         record.setAudience(request.getAudience() != null ? request.getAudience() : "ALL_USERS");
         record.setCreatedAt(nowIso);
         record.setCreatedBy(request.getCreatedBy() != null ? request.getCreatedBy() : "admin");
-        record.setStatus("PENDING");
+        record.setStatus("SENT");
 
         Map<String, String> userTokenMap = resolveTargetTokens(request);
         List<String> tokens = new ArrayList<>(userTokenMap.keySet());
+
+        System.out.println("📱 Resolved " + tokens.size() + " FCM target tokens for audience: " + record.getAudience());
 
         if (tokens.isEmpty()) {
             record.setTotalRecipients(0);
             record.setSuccessfulCount(0);
             record.setFailedCount(0);
             record.setSentAt(nowIso);
-            record.setStatus("SENT");
             saveNotificationHistory(record);
             return record;
         }
 
         Map<String, String> dataPayload = new HashMap<>();
         dataPayload.put("notificationId", notificationId);
-        dataPayload.put("title", request.getTitle() != null ? request.getTitle() : "");
-        dataPayload.put("message", request.getMessage() != null ? request.getMessage() : "");
-        dataPayload.put("body", request.getMessage() != null ? request.getMessage() : "");
-        dataPayload.put("imageUrl", request.getImageUrl() != null ? request.getImageUrl() : "");
+        dataPayload.put("title", record.getTitle());
+        dataPayload.put("message", record.getMessage());
+        dataPayload.put("body", record.getMessage());
+        dataPayload.put("imageUrl", record.getImageUrl());
         dataPayload.put("notificationType", record.getNotificationType());
         dataPayload.put("screen", record.getScreen());
         dataPayload.put("deepLink", request.getDeepLink() != null ? request.getDeepLink() : "");
@@ -92,23 +129,30 @@ public class NotificationService {
         for (int i = 0; i < tokens.size(); i += batchSize) {
             List<String> batchTokens = tokens.subList(i, Math.min(i + batchSize, tokens.size()));
 
-            MulticastMessage multicastMessage = MulticastMessage.builder()
+            MulticastMessage.Builder builder = MulticastMessage.builder()
                     .addAllTokens(batchTokens)
                     .putAllData(dataPayload)
+                    .setNotification(com.google.firebase.messaging.Notification.builder()
+                            .setTitle(record.getTitle())
+                            .setBody(record.getMessage())
+                            .setImage(record.getImageUrl() != null && !record.getImageUrl().trim().isEmpty() ? record.getImageUrl() : null)
+                            .build())
                     .setAndroidConfig(AndroidConfig.builder()
                             .setPriority(AndroidConfig.Priority.HIGH)
                             .setNotification(AndroidNotification.builder()
-                                    .setTitle(request.getTitle())
-                                    .setBody(request.getMessage())
+                                    .setTitle(record.getTitle())
+                                    .setBody(record.getMessage())
                                     .setChannelId("earning_notifications")
+                                    .setSound("default")
                                     .build())
-                            .build())
-                    .build();
+                            .build());
 
             try {
-                BatchResponse response = FirebaseMessaging.getInstance().sendEachForMulticast(multicastMessage);
+                BatchResponse response = FirebaseMessaging.getInstance().sendEachForMulticast(builder.build());
                 successCount += response.getSuccessCount();
                 failureCount += response.getFailureCount();
+
+                System.out.println("✅ FCM Multicast Batch result: " + response.getSuccessCount() + " success, " + response.getFailureCount() + " failures");
 
                 List<SendResponse> responses = response.getResponses();
                 for (int j = 0; j < responses.size(); j++) {
@@ -135,7 +179,6 @@ public class NotificationService {
         record.setSuccessfulCount(successCount);
         record.setFailedCount(failureCount);
         record.setSentAt(nowIso);
-        record.setStatus("SENT");
 
         saveNotificationHistory(record);
         return record;
