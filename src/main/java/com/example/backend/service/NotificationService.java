@@ -192,7 +192,7 @@ public class NotificationService {
             if ("SPECIFIC_USER".equalsIgnoreCase(audience) && request.getTargetUserId() != null && !request.getTargetUserId().isEmpty()) {
                 DocumentSnapshot userDoc = firestore.collection("users").document(request.getTargetUserId()).get().get();
                 if (userDoc.exists()) {
-                    String token = userDoc.getString("fcmToken");
+                    String token = extractToken(userDoc);
                     Boolean enabled = userDoc.getBoolean("notificationEnabled");
                     if (token != null && !token.trim().isEmpty() && (enabled == null || enabled)) {
                         tokenUserMap.put(token, userDoc.getId());
@@ -203,7 +203,7 @@ public class NotificationService {
                 List<QueryDocumentSnapshot> docs = future.get().getDocuments();
 
                 for (DocumentSnapshot doc : docs) {
-                    String token = doc.getString("fcmToken");
+                    String token = extractToken(doc);
                     Boolean enabled = doc.getBoolean("notificationEnabled");
                     if (token != null && !token.trim().isEmpty() && (enabled == null || enabled)) {
                         tokenUserMap.put(token, doc.getId());
@@ -215,6 +215,15 @@ public class NotificationService {
         }
 
         return tokenUserMap;
+    }
+
+    private String extractToken(DocumentSnapshot doc) {
+        if (doc == null) return null;
+        String token = doc.getString("fcmToken");
+        if (token == null || token.trim().isEmpty()) token = doc.getString("token");
+        if (token == null || token.trim().isEmpty()) token = doc.getString("fcm_token");
+        if (token == null || token.trim().isEmpty()) token = doc.getString("deviceToken");
+        return token;
     }
 
     private void removeInvalidToken(String userId, String token) {
