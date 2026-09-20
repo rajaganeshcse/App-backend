@@ -205,8 +205,7 @@ public class NotificationService {
                 DocumentSnapshot userDoc = firestore.collection("users").document(request.getTargetUserId()).get().get();
                 if (userDoc.exists()) {
                     String token = extractToken(userDoc);
-                    Boolean enabled = userDoc.getBoolean("notificationEnabled");
-                    if (token != null && !token.trim().isEmpty() && (enabled == null || enabled)) {
+                    if (token != null && isNotificationEnabled(userDoc)) {
                         tokenUserMap.put(token, userDoc.getId());
                     }
                 }
@@ -216,8 +215,7 @@ public class NotificationService {
 
                 for (DocumentSnapshot doc : docs) {
                     String token = extractToken(doc);
-                    Boolean enabled = doc.getBoolean("notificationEnabled");
-                    if (token != null && !token.trim().isEmpty() && (enabled == null || enabled)) {
+                    if (token != null && isNotificationEnabled(doc)) {
                         tokenUserMap.put(token, doc.getId());
                     }
                 }
@@ -226,16 +224,32 @@ public class NotificationService {
             System.err.println("❌ Error querying target tokens from Firestore: " + e.getMessage());
         }
 
+        System.out.println("📱 Resolved " + tokenUserMap.size() + " active FCM device tokens from Firestore users collection.");
         return tokenUserMap;
+    }
+
+    private boolean isNotificationEnabled(DocumentSnapshot doc) {
+        if (doc == null) return true;
+        Object enabledObj = doc.get("notificationEnabled");
+        if (enabledObj == null) return true;
+        if (enabledObj instanceof Boolean) return (Boolean) enabledObj;
+        if (enabledObj instanceof String) return !"false".equalsIgnoreCase((String) enabledObj);
+        return true;
     }
 
     private String extractToken(DocumentSnapshot doc) {
         if (doc == null) return null;
-        String token = doc.getString("fcmToken");
-        if (token == null || token.trim().isEmpty()) token = doc.getString("token");
-        if (token == null || token.trim().isEmpty()) token = doc.getString("fcm_token");
-        if (token == null || token.trim().isEmpty()) token = doc.getString("deviceToken");
-        return token;
+        String[] keys = {"fcmToken", "token", "fcm_token", "deviceToken", "fcm_id", "notification_token", "pushToken"};
+        for (String key : keys) {
+            Object val = doc.get(key);
+            if (val != null) {
+                String str = val.toString().trim();
+                if (!str.isEmpty() && !str.equalsIgnoreCase("null")) {
+                    return str;
+                }
+            }
+        }
+        return null;
     }
 
     private void removeInvalidToken(String userId, String token) {
