@@ -34,6 +34,10 @@ public class NotificationAdminController {
             return ResponseEntity.badRequest().body(Map.of("error", "Notification message is required"));
         }
 
+        if (NotificationService.isTokenInContent(request.getTitle()) || NotificationService.isTokenInContent(request.getMessage())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Corrupted notification rejected: FCM token detected in title or message"));
+        }
+
         try {
             NotificationRecord record = notificationService.sendNotification(request);
             return ResponseEntity.ok(record);

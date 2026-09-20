@@ -56,9 +56,19 @@ public class NotificationService implements InitializingBean {
                                     DocumentSnapshot doc = dc.getDocument();
                                     String status = doc.getString("status");
                                     if ("PENDING".equalsIgnoreCase(status)) {
+                                        String title = doc.getString("title");
+                                        String message = doc.getString("message");
+
+                                        String notifId = doc.getId();
+                                        if (isTokenInContent(title) || isTokenInContent(message)) {
+                                            System.err.println("⚠️ Corrupted notification rejected in Firestore listener: " + notifId);
+                                            firestore.collection("notifications").document(notifId).update("status", "CANCELLED");
+                                            continue;
+                                        }
+
                                         NotificationSendRequest req = new NotificationSendRequest();
-                                        req.setTitle(doc.getString("title"));
-                                        req.setMessage(doc.getString("message"));
+                                        req.setTitle(title);
+                                        req.setMessage(message);
                                         req.setImageUrl(doc.getString("imageUrl"));
                                         req.setNotificationType(doc.getString("notificationType"));
                                         req.setScreen(doc.getString("screen"));
@@ -66,7 +76,6 @@ public class NotificationService implements InitializingBean {
                                         req.setTargetUserId(doc.getString("targetUserId"));
                                         req.setCreatedBy(doc.getString("createdBy"));
 
-                                        String notifId = doc.getId();
                                         System.out.println("📬 Dispatching pending notification from Firestore: " + notifId);
                                         sendNotificationWithId(notifId, req);
                                     }
@@ -77,6 +86,14 @@ public class NotificationService implements InitializingBean {
         } catch (Exception e) {
             System.err.println("⚠️ Could not initialize Firestore snapshot listener: " + e.getMessage());
         }
+    }
+
+    public static boolean isTokenInContent(String text) {
+        if (text == null) return false;
+        String t = text.trim();
+        if (t.contains(":APA91b") || t.startsWith("fcmToken=") || t.startsWith("token=")) return true;
+        if (t.length() > 90 && !t.contains(" ")) return true;
+        return false;
     }
 
     public void send(String token, String title, String body, String amount) throws Exception {
@@ -103,17 +120,31 @@ public class NotificationService implements InitializingBean {
     public NotificationRecord sendNotificationWithId(String notificationId, NotificationSendRequest request) {
         String nowIso = ISO_FORMATTER.format(Instant.now());
 
+        String notificationTitle = request.getTitle() != null ? request.getTitle() : "Rewards Planet 🌟";
+        String notificationMessage = request.getMessage() != null ? request.getMessage() : "Claim your daily rewards now!";
+
         NotificationRecord record = new NotificationRecord();
         record.setNotificationId(notificationId);
-        record.setTitle(request.getTitle() != null ? request.getTitle() : "Rewards Planet 🌟");
-        record.setMessage(request.getMessage() != null ? request.getMessage() : "Claim your daily rewards now!");
+        record.setTitle(notificationTitle);
+        record.setMessage(notificationMessage);
         record.setImageUrl(request.getImageUrl() != null ? request.getImageUrl() : "");
         record.setNotificationType(request.getNotificationType() != null ? request.getNotificationType() : "PROMOTION");
         record.setScreen(request.getScreen() != null ? request.getScreen() : "HOME");
         record.setAudience(request.getAudience() != null ? request.getAudience() : "ALL_USERS");
         record.setCreatedAt(nowIso);
         record.setCreatedBy(request.getCreatedBy() != null ? request.getCreatedBy() : "admin");
-        record.setStatus("SENT");
+        record.setStatus("PENDING");
+
+        if (isTokenInContent(notificationTitle) || isTokenInContent(notificationMessage)) {
+            System.err.println("❌ Corrupted notification rejected (FCM token found in title/message): " + notificationId);
+            record.setStatus("CANCELLED");
+            record.setTotalRecipients(0);
+            record.setSuccessfulCount(0);
+            record.setFailedCount(0);
+            record.setSentAt(nowIso);
+            saveNotificationHistory(record);
+            return record;
+        }
 
         Map<String, String> userTokenMap = resolveTargetTokens(request);
         List<String> tokens = new ArrayList<>(userTokenMap.keySet());
@@ -125,15 +156,16 @@ public class NotificationService implements InitializingBean {
             record.setSuccessfulCount(0);
             record.setFailedCount(0);
             record.setSentAt(nowIso);
+            record.setStatus("COMPLETED");
             saveNotificationHistory(record);
             return record;
         }
 
         Map<String, String> dataPayload = new HashMap<>();
         dataPayload.put("notificationId", notificationId);
-        dataPayload.put("title", record.getTitle());
-        dataPayload.put("message", record.getMessage());
-        dataPayload.put("body", record.getMessage());
+        dataPayload.put("title", notificationTitle);
+        dataPayload.put("message", notificationMessage);
+        dataPayload.put("body", notificationMessage);
         dataPayload.put("imageUrl", record.getImageUrl());
         dataPayload.put("notificationType", record.getNotificationType());
         dataPayload.put("screen", record.getScreen());
@@ -153,15 +185,15 @@ public class NotificationService implements InitializingBean {
             List<String> batchTokens = tokens.subList(i, Math.min(i + batchSize, tokens.size()));
 
             com.google.firebase.messaging.Notification.Builder notifBuilder = com.google.firebase.messaging.Notification.builder()
-                    .setTitle(record.getTitle())
-                    .setBody(record.getMessage());
+                    .setTitle(notificationTitle)
+                    .setBody(notificationMessage);
             if (isValidHttpUrl) {
                 notifBuilder.setImage(img);
             }
 
             AndroidNotification.Builder androidNotifBuilder = AndroidNotification.builder()
-                    .setTitle(record.getTitle())
-                    .setBody(record.getMessage())
+                    .setTitle(notificationTitle)
+                    .setBody(notificationMessage)
                     .setChannelId("earning_notifications")
                     .setSound("default");
             if (isValidHttpUrl) {
@@ -209,6 +241,12 @@ public class NotificationService implements InitializingBean {
         record.setSuccessfulCount(successCount);
         record.setFailedCount(failureCount);
         record.setSentAt(nowIso);
+
+        if (successCount > 0 || failureCount == 0) {
+            record.setStatus("COMPLETED");
+        } else {
+            record.setStatus("FAILED");
+        }
 
         saveNotificationHistory(record);
         return record;
@@ -265,7 +303,7 @@ public class NotificationService implements InitializingBean {
                 if (str.startsWith("\"") && str.endsWith("\"") && str.length() > 2) {
                     str = str.substring(1, str.length() - 1).trim();
                 }
-                if (!str.isEmpty() && !str.equalsIgnoreCase("null")) {
+                if (!str.isEmpty() && !str.equalsIgnoreCase("null") && !isTokenInContent(str)) {
                     return str;
                 }
             }
