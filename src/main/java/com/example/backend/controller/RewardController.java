@@ -138,4 +138,44 @@ public class RewardController {
             return ResponseEntity.status(500).body("Server error: " + e.getMessage());
         }
     }
+
+    @GetMapping("/hitz-rewards/config")
+    public ResponseEntity<?> getHitzRewardsConfig() {
+        try {
+            Firestore db = FirestoreClient.getFirestore();
+            DocumentSnapshot doc = db.collection("settings").document("hitz_rewards").get().get();
+
+            if (doc.exists() && doc.get("payouts") != null) {
+                return ResponseEntity.ok(doc.getData());
+            }
+
+            Map<String, Object> config = new HashMap<>();
+            config.put("payouts", java.util.Arrays.asList(10, 25, 25, 25, 50));
+            config.put("titles", java.util.Arrays.asList(
+                    "Mega Hitz Offer #1",
+                    "Super Video Task #2",
+                    "Ultra Hitz Offer #3",
+                    "Premium Ad Task #4",
+                    "Jackpot Hitz Task #5"
+            ));
+            config.put("duration", "30s Long Ad");
+
+            // Seed Firestore document if missing
+            db.collection("settings").document("hitz_rewards").set(config);
+
+            return ResponseEntity.ok(config);
+        } catch (Exception e) {
+            Map<String, Object> fallback = new HashMap<>();
+            fallback.put("payouts", java.util.Arrays.asList(10, 25, 25, 25, 50));
+            fallback.put("titles", java.util.Arrays.asList(
+                    "Mega Hitz Offer #1",
+                    "Super Video Task #2",
+                    "Ultra Hitz Offer #3",
+                    "Premium Ad Task #4",
+                    "Jackpot Hitz Task #5"
+            ));
+            fallback.put("duration", "30s Long Ad");
+            return ResponseEntity.ok(fallback);
+        }
+    }
 }
