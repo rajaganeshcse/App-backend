@@ -178,4 +178,117 @@ public class RewardController {
             return ResponseEntity.ok(fallback);
         }
     }
+
+    @PostMapping("/hitz-rewards/claim")
+    public ResponseEntity<?> claimHitzReward(
+            @RequestHeader("Authorization") String token,
+            @RequestBody Map<String, Object> req) {
+
+        try {
+            if (token.startsWith("Bearer ")) {
+                token = token.substring(7);
+            }
+
+            FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(token);
+            String uid = decoded.getUid();
+
+            String requestId = (String) req.get("requestId");
+            Number taskIdNum = (Number) req.get("taskId");
+            int taskId = taskIdNum != null ? taskIdNum.intValue() : 1;
+
+            if (requestId == null || requestId.isEmpty()) {
+                return ResponseEntity.badRequest().body("Invalid requestId");
+            }
+
+            Firestore db = FirestoreClient.getFirestore();
+            DocumentReference userRef = db.collection("users").document(uid);
+            DocumentSnapshot userDoc = userRef.get().get();
+
+            if (!userDoc.exists()) {
+                return ResponseEntity.badRequest().body("User not found");
+            }
+
+            // Check duplicate request to prevent replay attacks
+            Query query = db.collection("transactions").whereEqualTo("requestId", requestId);
+            if (!query.get().get().isEmpty()) {
+                return ResponseEntity.badRequest().body("Duplicate request");
+            }
+
+            // Fetch dynamic hitz rewards configuration from Firestore settings/hitz_rewards
+            DocumentSnapshot configDoc = db.collection("settings").document("hitz_rewards").get().get();
+            List<Long> payouts = null;
+            if (configDoc.exists() && configDoc.get("payouts") != null) {
+                payouts = (List<Long>) configDoc.get("payouts");
+            }
+
+            int[] defaultPayouts = {10, 25, 25, 25, 50};
+            int coinReward;
+            if (payouts != null && taskId >= 1 && taskId <= payouts.size()) {
+                coinReward = payouts.get(taskId - 1).intValue();
+            } else if (taskId >= 1 && taskId <= defaultPayouts.length) {
+                coinReward = defaultPayouts[taskId - 1];
+            } else {
+                coinReward = 10;
+            }
+
+            int ticketReward = 5;
+
+            Long currentCoins = userDoc.getLong("coins");
+            Long currentTickets = userDoc.getLong("tickets");
+            if (currentCoins == null) currentCoins = 0L;
+            if (currentTickets == null) currentTickets = 0L;
+
+            long updatedCoins = currentCoins + coinReward;
+            long updatedTickets = currentTickets + ticketReward;
+
+            // Atomically update user balance in Firestore
+            userRef.update(
+                    "coins", FieldValue.increment(coinReward),
+                    "tickets", FieldValue.increment(ticketReward)
+            );
+
+            // Record coin history
+            Map<String, Object> coinDetail = new HashMap<>();
+            coinDetail.put("amount", coinReward);
+            coinDetail.put("type", "hitz_reward");
+            coinDetail.put("status", "Credit");
+            coinDetail.put("istype", "coin");
+            coinDetail.put("created_at", FieldValue.serverTimestamp());
+            userRef.collection("coinDetails").add(coinDetail);
+
+            // Record ticket history
+            Map<String, Object> ticketDetail = new HashMap<>();
+            ticketDetail.put("amount", ticketReward);
+            ticketDetail.put("type", "hitz_reward");
+            ticketDetail.put("status", "Credit");
+            ticketDetail.put("istype", "token");
+            ticketDetail.put("created_at", FieldValue.serverTimestamp());
+            userRef.collection("coinDetails").add(ticketDetail);
+
+            // Record transaction log
+            Map<String, Object> txn = new HashMap<>();
+            txn.put("uid", uid);
+            txn.put("coins", coinReward);
+            txn.put("tickets", ticketReward);
+            txn.put("type", "hitz_reward");
+            txn.put("taskId", taskId);
+            txn.put("requestId", requestId);
+            txn.put("time", FieldValue.serverTimestamp());
+            db.collection("transactions").add(txn);
+
+            Map<String, Object> resMap = new HashMap<>();
+            resMap.put("success", true);
+            resMap.put("message", "Hitz reward claimed successfully!");
+            resMap.put("coinReward", coinReward);
+            resMap.put("ticketReward", ticketReward);
+            resMap.put("totalCoins", updatedCoins);
+            resMap.put("totalTickets", updatedTickets);
+
+            return ResponseEntity.ok(resMap);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Server error: " + e.getMessage());
+        }
+    }
 }
