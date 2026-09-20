@@ -8,7 +8,14 @@ import com.google.firebase.cloud.FirestoreClient;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.DayOfWeek;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -139,6 +146,24 @@ public class RewardController {
         }
     }
 
+    private Map<String, String> getWeeklyPeriodInfo() {
+        ZoneId zoneKolkata = ZoneId.of("Asia/Kolkata");
+        ZonedDateTime now = ZonedDateTime.now(zoneKolkata);
+
+        ZonedDateTime weekStart = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                                    .truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime nextReset = weekStart.plusWeeks(1);
+
+        DateTimeFormatter isoFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+        DateTimeFormatter keyFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+        Map<String, String> info = new HashMap<>();
+        info.put("weekStart", weekStart.format(isoFormatter));
+        info.put("nextReset", nextReset.format(isoFormatter));
+        info.put("weekPeriodKey", weekStart.format(keyFormatter));
+        return info;
+    }
+
     @GetMapping("/hitz-rewards/config")
     public ResponseEntity<?> getHitzRewardsConfig() {
         try {
@@ -179,12 +204,61 @@ public class RewardController {
         }
     }
 
+    @GetMapping("/hitz-rewards/status")
+    public ResponseEntity<?> getHitzRewardsStatus(
+            @RequestHeader(value = "Authorization", required = false) String token) {
+
+        try {
+            if (token == null || token.isEmpty()) {
+                return ResponseEntity.status(401).body("Authorization header missing");
+            }
+            if (token.startsWith("Bearer ")) {
+                token = token.substring(7);
+            }
+
+            FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(token);
+            String uid = decoded.getUid();
+
+            Map<String, String> weekInfo = getWeeklyPeriodInfo();
+            String weekStartStr = weekInfo.get("weekStart");
+            String nextResetStr = weekInfo.get("nextReset");
+            String weekPeriodKey = weekInfo.get("weekPeriodKey");
+
+            Firestore db = FirestoreClient.getFirestore();
+            String claimDocId = uid + "_" + weekPeriodKey;
+            DocumentSnapshot claimDoc = db.collection("weekly_hitz_claims").document(claimDocId).get().get();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("weekStart", weekStartStr);
+            response.put("nextReset", nextResetStr);
+
+            if (claimDoc.exists() && Boolean.TRUE.equals(claimDoc.getBoolean("claimed"))) {
+                response.put("eligible", false);
+                response.put("claimed", true);
+                response.put("message", "Weekly reward already claimed");
+            } else {
+                response.put("eligible", true);
+                response.put("claimed", false);
+                response.put("message", "Weekly reward available");
+            }
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Server error: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/hitz-rewards/claim")
     public ResponseEntity<?> claimHitzReward(
-            @RequestHeader("Authorization") String token,
+            @RequestHeader(value = "Authorization", required = false) String token,
             @RequestBody Map<String, Object> req) {
 
         try {
+            if (token == null || token.isEmpty()) {
+                return ResponseEntity.status(401).body("Authorization header missing");
+            }
             if (token.startsWith("Bearer ")) {
                 token = token.substring(7);
             }
@@ -200,91 +274,131 @@ public class RewardController {
                 return ResponseEntity.badRequest().body("Invalid requestId");
             }
 
+            Map<String, String> weekInfo = getWeeklyPeriodInfo();
+            String weekStartStr = weekInfo.get("weekStart");
+            String nextResetStr = weekInfo.get("nextReset");
+            String weekPeriodKey = weekInfo.get("weekPeriodKey");
+
             Firestore db = FirestoreClient.getFirestore();
+
+            // Duplicate requestId check
+            Query dupQuery = db.collection("transactions").whereEqualTo("requestId", requestId);
+            if (!dupQuery.get().get().isEmpty()) {
+                Map<String, Object> dupRes = new HashMap<>();
+                dupRes.put("eligible", false);
+                dupRes.put("claimed", true);
+                dupRes.put("message", "Duplicate request");
+                dupRes.put("nextReset", nextResetStr);
+                return ResponseEntity.badRequest().body(dupRes);
+            }
+
+            String claimDocId = uid + "_" + weekPeriodKey;
+            DocumentReference claimRef = db.collection("weekly_hitz_claims").document(claimDocId);
             DocumentReference userRef = db.collection("users").document(uid);
-            DocumentSnapshot userDoc = userRef.get().get();
 
-            if (!userDoc.exists()) {
-                return ResponseEntity.badRequest().body("User not found");
-            }
+            // ATOMIC FIRESTORE TRANSACTION FOR WEEKLY ELIGIBILITY & DUPLICATE CLAIM PREVENTION
+            return db.runTransaction(transaction -> {
+                DocumentSnapshot claimDoc = transaction.get(claimRef).get();
+                if (claimDoc.exists() && Boolean.TRUE.equals(claimDoc.getBoolean("claimed"))) {
+                    Map<String, Object> claimedRes = new HashMap<>();
+                    claimedRes.put("eligible", false);
+                    claimedRes.put("claimed", true);
+                    claimedRes.put("message", "Weekly reward already claimed");
+                    claimedRes.put("nextReset", nextResetStr);
+                    return ResponseEntity.status(400).body(claimedRes);
+                }
 
-            // Check duplicate request to prevent replay attacks
-            Query query = db.collection("transactions").whereEqualTo("requestId", requestId);
-            if (!query.get().get().isEmpty()) {
-                return ResponseEntity.badRequest().body("Duplicate request");
-            }
+                DocumentSnapshot userDoc = transaction.get(userRef).get();
+                if (!userDoc.exists()) {
+                    return ResponseEntity.status(404).body("User not found");
+                }
 
-            // Fetch dynamic hitz rewards configuration from Firestore settings/hitz_rewards
-            DocumentSnapshot configDoc = db.collection("settings").document("hitz_rewards").get().get();
-            List<Long> payouts = null;
-            if (configDoc.exists() && configDoc.get("payouts") != null) {
-                payouts = (List<Long>) configDoc.get("payouts");
-            }
+                // Fetch dynamic hitz payouts configuration
+                DocumentSnapshot configDoc = db.collection("settings").document("hitz_rewards").get().get();
+                List<Long> payouts = null;
+                if (configDoc.exists() && configDoc.get("payouts") != null) {
+                    payouts = (List<Long>) configDoc.get("payouts");
+                }
 
-            int[] defaultPayouts = {10, 25, 25, 25, 50};
-            int coinReward;
-            if (payouts != null && taskId >= 1 && taskId <= payouts.size()) {
-                coinReward = payouts.get(taskId - 1).intValue();
-            } else if (taskId >= 1 && taskId <= defaultPayouts.length) {
-                coinReward = defaultPayouts[taskId - 1];
-            } else {
-                coinReward = 10;
-            }
+                int[] defaultPayouts = {10, 25, 25, 25, 50};
+                int coinReward;
+                if (payouts != null && taskId >= 1 && taskId <= payouts.size()) {
+                    coinReward = payouts.get(taskId - 1).intValue();
+                } else if (taskId >= 1 && taskId <= defaultPayouts.length) {
+                    coinReward = defaultPayouts[taskId - 1];
+                } else {
+                    coinReward = 10;
+                }
 
-            int ticketReward = 5;
+                int ticketReward = 5;
 
-            Long currentCoins = userDoc.getLong("coins");
-            Long currentTickets = userDoc.getLong("tickets");
-            if (currentCoins == null) currentCoins = 0L;
-            if (currentTickets == null) currentTickets = 0L;
+                Long currentCoins = userDoc.getLong("coins");
+                Long currentTickets = userDoc.getLong("tickets");
+                if (currentCoins == null) currentCoins = 0L;
+                if (currentTickets == null) currentTickets = 0L;
 
-            long updatedCoins = currentCoins + coinReward;
-            long updatedTickets = currentTickets + ticketReward;
+                long updatedCoins = currentCoins + coinReward;
+                long updatedTickets = currentTickets + ticketReward;
 
-            // Atomically update user balance in Firestore
-            userRef.update(
-                    "coins", FieldValue.increment(coinReward),
-                    "tickets", FieldValue.increment(ticketReward)
-            );
+                // 1. Record weekly claim state in Firestore
+                Map<String, Object> claimData = new HashMap<>();
+                claimData.put("userId", uid);
+                claimData.put("weekStart", weekStartStr);
+                claimData.put("weekPeriodKey", weekPeriodKey);
+                claimData.put("claimed", true);
+                claimData.put("claimedAt", FieldValue.serverTimestamp());
+                claimData.put("lastActivityAt", FieldValue.serverTimestamp());
+                claimData.put("requestId", requestId);
 
-            // Record coin history
-            Map<String, Object> coinDetail = new HashMap<>();
-            coinDetail.put("amount", coinReward);
-            coinDetail.put("type", "hitz_reward");
-            coinDetail.put("status", "Credit");
-            coinDetail.put("istype", "coin");
-            coinDetail.put("created_at", FieldValue.serverTimestamp());
-            userRef.collection("coinDetails").add(coinDetail);
+                transaction.set(claimRef, claimData);
 
-            // Record ticket history
-            Map<String, Object> ticketDetail = new HashMap<>();
-            ticketDetail.put("amount", ticketReward);
-            ticketDetail.put("type", "hitz_reward");
-            ticketDetail.put("status", "Credit");
-            ticketDetail.put("istype", "token");
-            ticketDetail.put("created_at", FieldValue.serverTimestamp());
-            userRef.collection("coinDetails").add(ticketDetail);
+                // 2. Update user balance atomically
+                transaction.update(userRef,
+                        "coins", FieldValue.increment(coinReward),
+                        "tickets", FieldValue.increment(ticketReward)
+                );
 
-            // Record transaction log
-            Map<String, Object> txn = new HashMap<>();
-            txn.put("uid", uid);
-            txn.put("coins", coinReward);
-            txn.put("tickets", ticketReward);
-            txn.put("type", "hitz_reward");
-            txn.put("taskId", taskId);
-            txn.put("requestId", requestId);
-            txn.put("time", FieldValue.serverTimestamp());
-            db.collection("transactions").add(txn);
+                // 3. Record history details & transaction log
+                Map<String, Object> coinDetail = new HashMap<>();
+                coinDetail.put("amount", coinReward);
+                coinDetail.put("type", "hitz_reward");
+                coinDetail.put("status", "Credit");
+                coinDetail.put("istype", "coin");
+                coinDetail.put("created_at", FieldValue.serverTimestamp());
+                db.collection("users").document(uid).collection("coinDetails").add(coinDetail);
 
-            Map<String, Object> resMap = new HashMap<>();
-            resMap.put("success", true);
-            resMap.put("message", "Hitz reward claimed successfully!");
-            resMap.put("coinReward", coinReward);
-            resMap.put("ticketReward", ticketReward);
-            resMap.put("totalCoins", updatedCoins);
-            resMap.put("totalTickets", updatedTickets);
+                Map<String, Object> ticketDetail = new HashMap<>();
+                ticketDetail.put("amount", ticketReward);
+                ticketDetail.put("type", "hitz_reward");
+                ticketDetail.put("status", "Credit");
+                ticketDetail.put("istype", "token");
+                ticketDetail.put("created_at", FieldValue.serverTimestamp());
+                db.collection("users").document(uid).collection("coinDetails").add(ticketDetail);
 
-            return ResponseEntity.ok(resMap);
+                Map<String, Object> txn = new HashMap<>();
+                txn.put("uid", uid);
+                txn.put("coins", coinReward);
+                txn.put("tickets", ticketReward);
+                txn.put("type", "hitz_reward");
+                txn.put("taskId", taskId);
+                txn.put("requestId", requestId);
+                txn.put("weekStart", weekStartStr);
+                txn.put("time", FieldValue.serverTimestamp());
+                db.collection("transactions").add(txn);
+
+                Map<String, Object> resMap = new HashMap<>();
+                resMap.put("eligible", false);
+                resMap.put("claimed", true);
+                resMap.put("message", "Weekly hit reward claimed successfully");
+                resMap.put("coinReward", coinReward);
+                resMap.put("ticketReward", ticketReward);
+                resMap.put("totalCoins", updatedCoins);
+                resMap.put("totalTickets", updatedTickets);
+                resMap.put("weekStart", weekStartStr);
+                resMap.put("nextReset", nextResetStr);
+
+                return ResponseEntity.ok(resMap);
+            }).get();
 
         } catch (Exception e) {
             e.printStackTrace();
