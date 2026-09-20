@@ -140,9 +140,15 @@ public class ReferralController {
 
             WriteBatch batch = db.batch();
 
+            String referrerName = referrerDoc.getString("name");
+            if (referrerName == null || referrerName.trim().isEmpty()) {
+                referrerName = "User (" + code + ")";
+            }
+
             // Update Current User (User A)
             batch.update(userRef,
                     "referredBy", refUid,
+                    "referredByName", referrerName,
                     "referralUsed", true,
                     "coins", FieldValue.increment(REFERRAL_COIN_REWARD),
                     "tickets", FieldValue.increment(REFERRAL_TICKET_REWARD)
