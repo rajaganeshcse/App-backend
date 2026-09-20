@@ -228,11 +228,16 @@ public class RewardController {
             String claimDocId = uid + "_" + weekPeriodKey;
             DocumentSnapshot claimDoc = db.collection("weekly_hitz_claims").document(claimDocId).get().get();
 
+            Long completedCount = claimDoc.exists() ? claimDoc.getLong("completedTasksCount") : 0L;
+            if (completedCount == null) completedCount = 0L;
+            boolean isFullyClaimed = claimDoc.exists() && (Boolean.TRUE.equals(claimDoc.getBoolean("claimed")) || completedCount >= 5);
+
             Map<String, Object> response = new HashMap<>();
             response.put("weekStart", weekStartStr);
             response.put("nextReset", nextResetStr);
+            response.put("completedTasksCount", isFullyClaimed ? 5 : completedCount);
 
-            if (claimDoc.exists() && Boolean.TRUE.equals(claimDoc.getBoolean("claimed"))) {
+            if (isFullyClaimed) {
                 response.put("eligible", false);
                 response.put("claimed", true);
                 response.put("message", "Weekly reward already claimed");
@@ -299,10 +304,16 @@ public class RewardController {
             // ATOMIC FIRESTORE TRANSACTION FOR WEEKLY ELIGIBILITY & DUPLICATE CLAIM PREVENTION
             return db.runTransaction(transaction -> {
                 DocumentSnapshot claimDoc = transaction.get(claimRef).get();
-                if (claimDoc.exists() && Boolean.TRUE.equals(claimDoc.getBoolean("claimed"))) {
+                Long currentCompletedCount = claimDoc.exists() ? claimDoc.getLong("completedTasksCount") : 0L;
+                if (currentCompletedCount == null) currentCompletedCount = 0L;
+
+                boolean alreadyFullyClaimed = claimDoc.exists() && (Boolean.TRUE.equals(claimDoc.getBoolean("claimed")) || currentCompletedCount >= 5);
+
+                if (alreadyFullyClaimed) {
                     Map<String, Object> claimedRes = new HashMap<>();
                     claimedRes.put("eligible", false);
                     claimedRes.put("claimed", true);
+                    claimedRes.put("completedTasksCount", 5);
                     claimedRes.put("message", "Weekly reward already claimed");
                     claimedRes.put("nextReset", nextResetStr);
                     return ResponseEntity.status(400).body(claimedRes);
@@ -340,17 +351,20 @@ public class RewardController {
                 long updatedCoins = currentCoins + coinReward;
                 long updatedTickets = currentTickets + ticketReward;
 
+                long newCompletedCount = Math.max(currentCompletedCount + 1, taskId);
+                boolean isNowFullyClaimed = newCompletedCount >= 5;
+
                 // 1. Record weekly claim state in Firestore
                 Map<String, Object> claimData = new HashMap<>();
                 claimData.put("userId", uid);
                 claimData.put("weekStart", weekStartStr);
                 claimData.put("weekPeriodKey", weekPeriodKey);
-                claimData.put("claimed", true);
-                claimData.put("claimedAt", FieldValue.serverTimestamp());
+                claimData.put("completedTasksCount", newCompletedCount);
+                claimData.put("claimed", isNowFullyClaimed);
                 claimData.put("lastActivityAt", FieldValue.serverTimestamp());
                 claimData.put("requestId", requestId);
 
-                transaction.set(claimRef, claimData);
+                transaction.set(claimRef, claimData, SetOptions.merge());
 
                 // 2. Update user balance atomically
                 transaction.update(userRef,
@@ -387,9 +401,10 @@ public class RewardController {
                 db.collection("transactions").add(txn);
 
                 Map<String, Object> resMap = new HashMap<>();
-                resMap.put("eligible", false);
-                resMap.put("claimed", true);
-                resMap.put("message", "Weekly hit reward claimed successfully");
+                resMap.put("eligible", !isNowFullyClaimed);
+                resMap.put("claimed", isNowFullyClaimed);
+                resMap.put("completedTasksCount", newCompletedCount);
+                resMap.put("message", isNowFullyClaimed ? "Weekly hit reward fully claimed!" : "Task #" + taskId + " completed successfully!");
                 resMap.put("coinReward", coinReward);
                 resMap.put("ticketReward", ticketReward);
                 resMap.put("totalCoins", updatedCoins);
