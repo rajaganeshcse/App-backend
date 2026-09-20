@@ -244,6 +244,9 @@ public class NotificationService {
             Object val = doc.get(key);
             if (val != null) {
                 String str = val.toString().trim();
+                if (str.startsWith("\"") && str.endsWith("\"") && str.length() > 2) {
+                    str = str.substring(1, str.length() - 1).trim();
+                }
                 if (!str.isEmpty() && !str.equalsIgnoreCase("null")) {
                     return str;
                 }
