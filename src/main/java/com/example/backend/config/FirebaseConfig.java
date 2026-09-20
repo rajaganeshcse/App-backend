@@ -54,88 +54,32 @@ public class FirebaseConfig {
 
 
         // =====================================================
-        // CHECK REQUIRED VALUES
+        // CHECK REQUIRED VALUES & BUILD CREDENTIALS
         // =====================================================
 
-        if (projectId == null || projectId.isBlank()) {
+        GoogleCredentials credentials;
 
-            throw new RuntimeException(
-                    "FIREBASE_PROJECT_ID is missing"
-            );
+        if (clientEmail != null && !clientEmail.isBlank() && privateKey != null && !privateKey.isBlank()) {
+            privateKey = privateKey.replace("\\n", "\n");
+            String json =
+                    "{\n" +
+                            "  \"type\": \"service_account\",\n" +
+                            "  \"project_id\": \"" + escapeJson(projectId != null ? projectId : "r-gamer-35915") + "\",\n" +
+                            "  \"private_key_id\": \"" + escapeJson(privateKeyId == null ? "" : privateKeyId) + "\",\n" +
+                            "  \"private_key\": \"" + escapeJson(privateKey) + "\",\n" +
+                            "  \"client_email\": \"" + escapeJson(clientEmail) + "\",\n" +
+                            "  \"client_id\": \"" + escapeJson(clientId == null ? "" : clientId) + "\"\n" +
+                            "}";
+            credentials = GoogleCredentials.fromStream(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)));
+        } else {
+            System.out.println("⚠️ FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY missing in env. Attempting default credentials for project: " + (projectId != null ? projectId : "r-gamer-35915"));
+            try {
+                credentials = GoogleCredentials.getApplicationDefault();
+            } catch (Exception e) {
+                System.err.println("⚠️ Default GoogleCredentials not found: " + e.getMessage());
+                credentials = GoogleCredentials.fromStream(new ByteArrayInputStream("{}".getBytes(StandardCharsets.UTF_8)));
+            }
         }
-
-        if (clientEmail == null || clientEmail.isBlank()) {
-
-            throw new RuntimeException(
-                    "FIREBASE_CLIENT_EMAIL is missing"
-            );
-        }
-
-        if (privateKey == null || privateKey.isBlank()) {
-
-            throw new RuntimeException(
-                    "FIREBASE_PRIVATE_KEY is missing"
-            );
-        }
-
-
-        // =====================================================
-        // FIX PRIVATE KEY NEWLINES
-        // =====================================================
-
-        privateKey =
-                privateKey.replace("\\n", "\n");
-
-
-        // =====================================================
-        // CREATE SERVICE ACCOUNT JSON
-        // =====================================================
-
-        String json =
-                "{\n" +
-                        "  \"type\": \"service_account\",\n" +
-                        "  \"project_id\": \"" +
-                        escapeJson(projectId) +
-                        "\",\n" +
-
-                        "  \"private_key_id\": \"" +
-                        escapeJson(
-                                privateKeyId == null
-                                        ? ""
-                                        : privateKeyId
-                        ) +
-                        "\",\n" +
-
-                        "  \"private_key\": \"" +
-                        escapeJson(privateKey) +
-                        "\",\n" +
-
-                        "  \"client_email\": \"" +
-                        escapeJson(clientEmail) +
-                        "\",\n" +
-
-                        "  \"client_id\": \"" +
-                        escapeJson(
-                                clientId == null
-                                        ? ""
-                                        : clientId
-                        ) +
-                        "\"\n" +
-
-                        "}";
-
-
-        // =====================================================
-        // CREATE INPUT STREAM
-        // =====================================================
-
-        InputStream serviceAccount =
-                new ByteArrayInputStream(
-                        json.getBytes(
-                                StandardCharsets.UTF_8
-                        )
-                );
-
 
         // =====================================================
         // FIREBASE OPTIONS
@@ -143,26 +87,17 @@ public class FirebaseConfig {
 
         FirebaseOptions options =
                 FirebaseOptions.builder()
-                        .setCredentials(
-                                GoogleCredentials.fromStream(
-                                        serviceAccount
-                                )
-                        )
-                        .setProjectId(projectId)
+                        .setCredentials(credentials)
+                        .setProjectId(projectId != null && !projectId.isBlank() ? projectId : "r-gamer-35915")
                         .build();
-
 
         // =====================================================
         // INITIALIZE FIREBASE
         // =====================================================
 
-        FirebaseApp app =
-                FirebaseApp.initializeApp(options);
+        FirebaseApp app = FirebaseApp.initializeApp(options);
 
-
-        System.out.println(
-                "🔥 Firebase Connected"
-        );
+        System.out.println("🔥 Firebase Connected");
 
 
         // IMPORTANT:
