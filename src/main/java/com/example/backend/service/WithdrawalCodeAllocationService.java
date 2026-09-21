@@ -1,5 +1,6 @@
 package com.example.backend.service;
 
+import com.example.backend.model.NotificationSendRequest;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.*;
 import com.google.firebase.cloud.FirestoreClient;
@@ -70,7 +71,7 @@ public class WithdrawalCodeAllocationService {
 
             Boolean success = db.runTransaction(transaction -> {
                 DocumentSnapshot snap = transaction.get(codeRef).get();
-                if (snap.exists() && "AVAILABLE".equals(snap.getString("status"))) {
+                if (snap.exists() && "AVAILABLE".equalsIgnoreCase(snap.getString("status"))) {
                     transaction.update(codeRef,
                             "status", "ALLOCATED",
                             "allocatedTo", uid,
@@ -178,31 +179,53 @@ public class WithdrawalCodeAllocationService {
      */
     private boolean autoAllocateToPendingRequest(Firestore db, String normMethod, long amount, String codeDocId, String codeStr) {
         try {
-            // Find oldest PENDING request matching method & amount
-            // Match normalized method OR alias (e.g. GOOGLE_PLAY or GOOGLE)
+            // Fetch requests matching amount
             Query query = db.collection("redeem_requests")
                     .whereEqualTo("amount", amount)
-                    .whereEqualTo("status", "PENDING")
-                    .orderBy("created_at", Query.Direction.ASCENDING)
-                    .limit(10);
+                    .limit(50);
 
-            List<QueryDocumentSnapshot> requests = query.get().get().getDocuments();
+            List<QueryDocumentSnapshot> rawRequests = query.get().get().getDocuments();
 
-            for (QueryDocumentSnapshot reqDoc : requests) {
-                String reqType = normalizeMethod(reqDoc.getString("type"));
-                if (normMethod.equals(reqType)) {
-                    String requestId = reqDoc.getId();
-                    String uid = reqDoc.getString("uid");
+            // Filter pending requests for matching method (case-insensitive status check)
+            List<QueryDocumentSnapshot> pendingRequests = new ArrayList<>();
+            for (QueryDocumentSnapshot doc : rawRequests) {
+                String reqStatus = doc.getString("status");
+                if (reqStatus != null && (reqStatus.equalsIgnoreCase("PENDING") || reqStatus.equalsIgnoreCase("PENDING_CODE"))) {
+                    String reqType = normalizeMethod(doc.getString("type"));
+                    if (normMethod.equals(reqType)) {
+                        pendingRequests.add(doc);
+                    }
+                }
+            }
 
-                    DocumentReference codeRef = db.collection("withdrawal_codes").document(codeDocId);
-                    DocumentReference reqRef = db.collection("redeem_requests").document(requestId);
+            if (pendingRequests.isEmpty()) {
+                log.info("No matching pending request found for method={}, amount={}", normMethod, amount);
+                return false;
+            }
 
-                    db.runTransaction(transaction -> {
-                        DocumentSnapshot cSnap = transaction.get(codeRef).get();
-                        DocumentSnapshot rSnap = transaction.get(reqRef).get();
+            // Sort FIFO by created_at timestamp
+            pendingRequests.sort((a, b) -> {
+                com.google.cloud.Timestamp tA = a.getTimestamp("created_at");
+                com.google.cloud.Timestamp tB = b.getTimestamp("created_at");
+                long sA = tA != null ? tA.getSeconds() : 0L;
+                long sB = tB != null ? tB.getSeconds() : 0L;
+                return Long.compare(sA, sB);
+            });
 
-                        if (cSnap.exists() && "AVAILABLE".equals(cSnap.getString("status"))
-                                && rSnap.exists() && "PENDING".equals(rSnap.getString("status"))) {
+            for (QueryDocumentSnapshot reqDoc : pendingRequests) {
+                String requestId = reqDoc.getId();
+                String uid = reqDoc.getString("uid");
+
+                DocumentReference codeRef = db.collection("withdrawal_codes").document(codeDocId);
+                DocumentReference reqRef = db.collection("redeem_requests").document(requestId);
+
+                Boolean success = db.runTransaction(transaction -> {
+                    DocumentSnapshot cSnap = transaction.get(codeRef).get();
+                    DocumentSnapshot rSnap = transaction.get(reqRef).get();
+
+                    if (cSnap.exists() && "AVAILABLE".equalsIgnoreCase(cSnap.getString("status"))) {
+                        String rStatus = rSnap.exists() ? rSnap.getString("status") : null;
+                        if (rStatus != null && (rStatus.equalsIgnoreCase("PENDING") || rStatus.equalsIgnoreCase("PENDING_CODE"))) {
 
                             // Mark code as ALLOCATED
                             transaction.update(codeRef,
@@ -220,33 +243,35 @@ public class WithdrawalCodeAllocationService {
                             );
                             return true;
                         }
-                        return false;
-                    }).get();
+                    }
+                    return false;
+                }).get();
 
+                if (Boolean.TRUE.equals(success)) {
                     log.info("Auto-allocated code={} to FIFO pending request={}", codeStr, requestId);
 
-                    // Send push notification to user
-                    if (uid != null) {
+                    // Send high-priority system push notification to user
+                    if (uid != null && !uid.isEmpty()) {
                         try {
-                            DocumentSnapshot uDoc = db.collection("users").document(uid).get().get();
-                            if (uDoc.exists()) {
-                                String token = uDoc.getString("fcmToken");
-                                if (token != null && !token.isEmpty()) {
-                                    notificationService.send(token,
-                                            "Withdrawal Approved 🎉",
-                                            "Your " + normMethod + " voucher code is ready: " + codeStr,
-                                            "₹ " + amount
-                                    );
-                                }
-                            }
-                        } catch (Exception ignored) {}
+                            NotificationSendRequest notifReq = new NotificationSendRequest();
+                            notifReq.setAudience("SPECIFIC_USER");
+                            notifReq.setTargetUserId(uid);
+                            notifReq.setTitle("Withdrawal Approved 🎉");
+                            notifReq.setMessage("Your " + normMethod.replace("_", " ") + " voucher code is ready: " + codeStr);
+                            notifReq.setNotificationType("WITHDRAWAL_APPROVED");
+                            notifReq.setScreen("TRANSACTION_HISTORY");
+                            notificationService.sendNotification(notifReq);
+                            log.info("Push approval notification sent successfully for user={}", uid);
+                        } catch (Exception notifErr) {
+                            log.error("Failed to send push notification: {}", notifErr.getMessage(), notifErr);
+                        }
                     }
 
                     return true;
                 }
             }
         } catch (Exception e) {
-            log.error("Auto allocation error: {}", e.getMessage());
+            log.error("Auto allocation error: {}", e.getMessage(), e);
         }
         return false;
     }
