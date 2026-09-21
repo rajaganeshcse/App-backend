@@ -42,12 +42,20 @@ public class withdrawService {
                 "AMAZON"
         );
 
-        if (!allowedTypes.contains(normalizedType)) {
-            return Map.of(
-                    "status", false,
-                    "message", "Invalid withdraw type"
-            );
-        }
+        // Check if the requested withdraw type is enabled in Firestore settings/reward_config
+        try {
+            DocumentSnapshot configDoc = db1.collection("settings").document("reward_config").get().get();
+            if (configDoc.exists()) {
+                String methodKey = normalizedType.toLowerCase() + "Enabled";
+                Boolean isEnabled = configDoc.getBoolean(methodKey);
+                if (isEnabled != null && !isEnabled) {
+                    return Map.of(
+                            "status", false,
+                            "message", normalizedType + " withdrawals are currently disabled by admin"
+                    );
+                }
+            }
+        } catch (Exception ignored) {}
 
         Firestore db = FirestoreClient.getFirestore();
         DocumentReference userRef = db.collection("users").document(uid);
