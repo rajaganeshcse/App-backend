@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 
 @Controller
@@ -20,9 +21,14 @@ public class TrackingRedirectController {
     private ShareEarnService shareEarnService;
 
     @GetMapping("/track/{clickId}")
-    public ResponseEntity<?> handleTrackingRedirect(@PathVariable("clickId") String clickId) {
+    public ResponseEntity<?> handleTrackingRedirect(
+            @PathVariable("clickId") String clickId,
+            HttpServletRequest request
+    ) {
         try {
-            String trustedDestinationUrl = shareEarnService.handleRedirect(clickId);
+            String ipAddress = extractClientIp(request);
+            String userAgent = request.getHeader("User-Agent");
+            String trustedDestinationUrl = shareEarnService.handleRedirect(clickId, ipAddress, userAgent);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setLocation(URI.create(trustedDestinationUrl));
@@ -35,5 +41,17 @@ public class TrackingRedirectController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("<html><body><h2>Server Error</h2><p>Unable to process tracking redirect.</p></body></html>");
         }
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.trim().isEmpty() && !"unknown".equalsIgnoreCase(xForwardedFor)) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.trim().isEmpty() && !"unknown".equalsIgnoreCase(xRealIp)) {
+            return xRealIp.trim();
+        }
+        return request.getRemoteAddr();
     }
 }

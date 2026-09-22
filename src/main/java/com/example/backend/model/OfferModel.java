@@ -22,6 +22,12 @@ public class OfferModel {
     private Long createdAt;
     private Long updatedAt;
 
+    // Referral Task & Proof Tracking
+    private String offerType; // AFFILIATE (default), REFERRAL_TASK
+    private String referralCode; // e.g. "gp1234"
+    private boolean proofRequired;
+    private String proofLabel; // e.g. "Enter your GPay registered mobile number or UPI reference"
+
     public OfferModel() {}
 
     public String getOfferId() { return offerId; }
@@ -77,4 +83,16 @@ public class OfferModel {
 
     public Long getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Long updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getOfferType() { return offerType; }
+    public void setOfferType(String offerType) { this.offerType = offerType; }
+
+    public String getReferralCode() { return referralCode; }
+    public void setReferralCode(String referralCode) { this.referralCode = referralCode; }
+
+    public boolean isProofRequired() { return proofRequired; }
+    public void setProofRequired(boolean proofRequired) { this.proofRequired = proofRequired; }
+
+    public String getProofLabel() { return proofLabel; }
+    public void setProofLabel(String proofLabel) { this.proofLabel = proofLabel; }
 }

@@ -169,6 +169,7 @@ public class ShareEarnAdminService {
                 transaction.update(convRef, "status", "APPROVED");
                 transaction.update(convRef, "approvedAt", System.currentTimeMillis());
 
+                DocumentReference coinDetailRef = db.collection("users").document(uid).collection("coinDetails").document();
                 Map<String, Object> coinDetail = new HashMap<>();
                 coinDetail.put("amount", rewardCoins);
                 coinDetail.put("type", "Share & Earn Reward Approved");
@@ -176,8 +177,28 @@ public class ShareEarnAdminService {
                 coinDetail.put("istype", "coin");
                 coinDetail.put("source", "SHARE_EARN");
                 coinDetail.put("sourceId", conversionId);
+                coinDetail.put("offerId", conv.getOfferId());
                 coinDetail.put("created_at", FieldValue.serverTimestamp());
-                db.collection("users").document(uid).collection("coinDetails").add(coinDetail);
+                transaction.set(coinDetailRef, coinDetail);
+
+                if (conv.getClickId() != null && !conv.getClickId().isEmpty()) {
+                    DocumentReference clickRef = db.collection("tracking_clicks").document(conv.getClickId());
+                    transaction.update(clickRef, "status", "CONVERTED");
+                    transaction.update(clickRef, "conversionId", conversionId);
+                }
+
+                // FCM Push Notification
+                String fcmToken = userSnap.getString("fcmToken");
+                if (fcmToken != null && !fcmToken.isEmpty() && notificationService != null) {
+                    try {
+                        notificationService.send(
+                                fcmToken,
+                                "Reward Approved! 🎉",
+                                "Your claim has been approved! " + rewardCoins + " coins added to your wallet.",
+                                "+" + rewardCoins + " Coins"
+                        );
+                    } catch (Exception ignored) {}
+                }
 
                 logAudit("ADMIN", "APPROVE_CONVERSION", "CONVERSION", conversionId, currentStatus, "APPROVED");
 
@@ -196,6 +217,28 @@ public class ShareEarnAdminService {
             updates.put("rejectedAt", System.currentTimeMillis());
             updates.put("rejectionReason", reason != null ? reason : "Rejected by Admin");
             convRef.update(updates).get();
+
+            if (conv.getClickId() != null && !conv.getClickId().isEmpty()) {
+                try {
+                    db.collection("tracking_clicks").document(conv.getClickId()).update("status", "REJECTED");
+                } catch (Exception ignored) {}
+            }
+
+            // Optional FCM notification for rejection
+            try {
+                DocumentSnapshot userSnap = db.collection("users").document(conv.getUserId()).get().get();
+                if (userSnap.exists()) {
+                    String fcmToken = userSnap.getString("fcmToken");
+                    if (fcmToken != null && !fcmToken.isEmpty() && notificationService != null) {
+                        notificationService.send(
+                                fcmToken,
+                                "Offer Claim Update",
+                                "Your claim was not approved: " + (reason != null ? reason : "Verification incomplete"),
+                                "Claim Rejected"
+                        );
+                    }
+                }
+            } catch (Exception ignored) {}
 
             logAudit("ADMIN", "REJECT_CONVERSION", "CONVERSION", conversionId, currentStatus, "REJECTED");
 
@@ -229,6 +272,7 @@ public class ShareEarnAdminService {
                 transaction.update(convRef, "status", "REVERSED");
                 transaction.update(convRef, "reversedAt", System.currentTimeMillis());
 
+                DocumentReference coinDetailRef = db.collection("users").document(uid).collection("coinDetails").document();
                 Map<String, Object> coinDetail = new HashMap<>();
                 coinDetail.put("amount", rewardCoins);
                 coinDetail.put("type", "Share & Earn Reward Reversal");
@@ -237,7 +281,7 @@ public class ShareEarnAdminService {
                 coinDetail.put("source", "SHARE_EARN_REVERSAL");
                 coinDetail.put("sourceId", conversionId);
                 coinDetail.put("created_at", FieldValue.serverTimestamp());
-                db.collection("users").document(uid).collection("coinDetails").add(coinDetail);
+                transaction.set(coinDetailRef, coinDetail);
 
                 logAudit("ADMIN", "REVERSE_CONVERSION", "CONVERSION", conversionId, currentStatus, "REVERSED");
 

@@ -18,6 +18,8 @@ public class ConversionModel {
     private Long reversedAt;
     private String rejectionReason;
     private Map<String, String> metadata;
+    private String proofText;
+    private String referralCodeUsed;
 
     public ConversionModel() {}
 
@@ -65,4 +67,10 @@ public class ConversionModel {
 
     public Map<String, String> getMetadata() { return metadata; }
     public void setMetadata(Map<String, String> metadata) { this.metadata = metadata; }
+
+    public String getProofText() { return proofText; }
+    public void setProofText(String proofText) { this.proofText = proofText; }
+
+    public String getReferralCodeUsed() { return referralCodeUsed; }
+    public void setReferralCodeUsed(String referralCodeUsed) { this.referralCodeUsed = referralCodeUsed; }
 }

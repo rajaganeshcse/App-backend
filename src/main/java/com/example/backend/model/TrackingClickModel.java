@@ -14,6 +14,11 @@ public class TrackingClickModel {
     private String conversionId;
     private Long expiresAt;
     private Map<String, String> metadata;
+    private boolean isNewUser = true;
+    private int clickCount = 1;
+    private String ipAddress;
+    private String deviceInfo;
+    private Long lastClickedAt;
 
     public TrackingClickModel() {}
 
@@ -49,4 +54,20 @@ public class TrackingClickModel {
 
     public Map<String, String> getMetadata() { return metadata; }
     public void setMetadata(Map<String, String> metadata) { this.metadata = metadata; }
+
+    public boolean isNewUser() { return isNewUser; }
+    public void setNewUser(boolean newUser) { isNewUser = newUser; }
+    public void setIsNewUser(boolean newUser) { isNewUser = newUser; }
+
+    public int getClickCount() { return clickCount; }
+    public void setClickCount(int clickCount) { this.clickCount = clickCount; }
+
+    public String getIpAddress() { return ipAddress; }
+    public void setIpAddress(String ipAddress) { this.ipAddress = ipAddress; }
+
+    public String getDeviceInfo() { return deviceInfo; }
+    public void setDeviceInfo(String deviceInfo) { this.deviceInfo = deviceInfo; }
+
+    public Long getLastClickedAt() { return lastClickedAt; }
+    public void setLastClickedAt(Long lastClickedAt) { this.lastClickedAt = lastClickedAt; }
 }

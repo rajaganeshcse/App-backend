@@ -90,6 +90,10 @@ public class ShareEarnService {
     }
 
     public Map<String, Object> createClickTracking(String uid, String offerId, String baseUrl) throws Exception {
+        return createClickTracking(uid, offerId, baseUrl, null, null);
+    }
+
+    public Map<String, Object> createClickTracking(String uid, String offerId, String baseUrl, String ipAddress, String userAgent) throws Exception {
         Firestore db = FirestoreClient.getFirestore();
         DocumentSnapshot offerDoc = db.collection("offers").document(offerId).get().get();
 
@@ -110,6 +114,15 @@ public class ShareEarnService {
             throw new IllegalArgumentException("Offer has expired");
         }
 
+        // Query prior clicks by this user on this offer to determine if New User or Repeat Clicker
+        Query priorClicksQuery = db.collection("tracking_clicks")
+                .whereEqualTo("userId", uid)
+                .whereEqualTo("offerId", offerId);
+        List<QueryDocumentSnapshot> priorClicks = priorClicksQuery.get().get().getDocuments();
+
+        boolean isNewUser = priorClicks.isEmpty();
+        int clickCount = priorClicks.size() + 1;
+
         String clickId = "CLK_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
         long expiresAt = now + (7L * 24 * 60 * 60 * 1000); // 7 days expiration
 
@@ -119,11 +132,22 @@ public class ShareEarnService {
         click.setOfferId(offerId);
         click.setCreatedAt(now);
         click.setClickedAt(now);
+        click.setLastClickedAt(now);
         click.setStatus("CLICKED");
         click.setExpiresAt(expiresAt);
+        click.setNewUser(isNewUser);
+        click.setClickCount(clickCount);
+        click.setIpAddress(ipAddress);
+        click.setDeviceInfo(userAgent != null ? userAgent : "AndroidApp");
 
         Map<String, String> meta = new HashMap<>();
         meta.put("createdFrom", "AndroidApp");
+        if (offer.getReferralCode() != null && !offer.getReferralCode().isEmpty()) {
+            meta.put("offerReferralCode", offer.getReferralCode());
+        }
+        if (offer.getOfferType() != null) {
+            meta.put("offerType", offer.getOfferType());
+        }
         click.setMetadata(meta);
 
         db.collection("tracking_clicks").document(clickId).set(click).get();
@@ -140,10 +164,18 @@ public class ShareEarnService {
         res.put("trackingUrl", trackingUrl);
         res.put("offerId", offerId);
         res.put("expiresAt", expiresAt);
+        res.put("isNewUser", isNewUser);
+        res.put("clickCount", clickCount);
+        res.put("referralCode", offer.getReferralCode());
+        res.put("offerType", offer.getOfferType() != null ? offer.getOfferType() : "AFFILIATE");
         return res;
     }
 
     public String handleRedirect(String clickId) throws Exception {
+        return handleRedirect(clickId, null, null);
+    }
+
+    public String handleRedirect(String clickId, String ipAddress, String userAgent) throws Exception {
         Firestore db = FirestoreClient.getFirestore();
         DocumentReference clickRef = db.collection("tracking_clicks").document(clickId);
         DocumentSnapshot clickDoc = clickRef.get().get();
@@ -180,6 +212,13 @@ public class ShareEarnService {
         Map<String, Object> updates = new HashMap<>();
         updates.put("status", "REDIRECTED");
         updates.put("redirectedAt", System.currentTimeMillis());
+        updates.put("lastClickedAt", System.currentTimeMillis());
+        if (ipAddress != null && (click.getIpAddress() == null || click.getIpAddress().isEmpty())) {
+            updates.put("ipAddress", ipAddress);
+        }
+        if (userAgent != null && (click.getDeviceInfo() == null || "AndroidApp".equals(click.getDeviceInfo()))) {
+            updates.put("deviceInfo", userAgent);
+        }
         clickRef.update(updates);
 
         String destUrl = offer.getDestinationUrl().trim();
@@ -200,6 +239,131 @@ public class ShareEarnService {
         }
 
         return destUrl;
+    }
+
+    public Map<String, Object> submitOfferClaim(
+            String uid,
+            String offerId,
+            String clickId,
+            String proofText,
+            String referralCodeUsed
+    ) throws Exception {
+        Firestore db = FirestoreClient.getFirestore();
+
+        DocumentSnapshot offerDoc = db.collection("offers").document(offerId).get().get();
+        if (!offerDoc.exists()) {
+            throw new IllegalArgumentException("Offer not found: " + offerId);
+        }
+
+        OfferModel offer = offerDoc.toObject(OfferModel.class);
+        if (offer == null || "INACTIVE".equalsIgnoreCase(offer.getStatus())) {
+            throw new IllegalArgumentException("Offer is no longer active");
+        }
+
+        // Validate proof requirement
+        if (offer.isProofRequired() && (proofText == null || proofText.trim().isEmpty())) {
+            String label = offer.getProofLabel() != null && !offer.getProofLabel().isEmpty() 
+                    ? offer.getProofLabel() 
+                    : "proof details";
+            throw new IllegalArgumentException("Proof is required: Please provide " + label);
+        }
+
+        // 1. Check if user already has an APPROVED conversion for this offer
+        Query approvedQuery = db.collection("conversions")
+                .whereEqualTo("userId", uid)
+                .whereEqualTo("offerId", offerId)
+                .whereEqualTo("status", "APPROVED");
+        if (!approvedQuery.get().get().isEmpty()) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("code", "ALREADY_COMPLETED");
+            err.put("message", "You have already completed this offer and received your reward.");
+            return err;
+        }
+
+        // 2. Check if user already has a PENDING claim for this offer
+        Query pendingQuery = db.collection("conversions")
+                .whereEqualTo("userId", uid)
+                .whereEqualTo("offerId", offerId)
+                .whereEqualTo("status", "PENDING");
+        if (!pendingQuery.get().get().isEmpty()) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("code", "CLAIM_PENDING");
+            err.put("message", "Your previous claim for this offer is currently under review by Admin.");
+            return err;
+        }
+
+        // If clickId is missing or empty, find or create one
+        String validClickId = clickId;
+        if (validClickId == null || validClickId.trim().isEmpty()) {
+            Query lastClickQuery = db.collection("tracking_clicks")
+                    .whereEqualTo("userId", uid)
+                    .whereEqualTo("offerId", offerId)
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
+                    .limit(1);
+            List<QueryDocumentSnapshot> clickDocs = lastClickQuery.get().get().getDocuments();
+            if (!clickDocs.isEmpty()) {
+                validClickId = clickDocs.get(0).getId();
+            } else {
+                validClickId = "CLK_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+                TrackingClickModel newClick = new TrackingClickModel();
+                newClick.setClickId(validClickId);
+                newClick.setUserId(uid);
+                newClick.setOfferId(offerId);
+                newClick.setCreatedAt(System.currentTimeMillis());
+                newClick.setClickedAt(System.currentTimeMillis());
+                newClick.setStatus("CLAIM_SUBMITTED");
+                newClick.setNewUser(true);
+                newClick.setClickCount(1);
+                db.collection("tracking_clicks").document(validClickId).set(newClick).get();
+            }
+        }
+
+        long now = System.currentTimeMillis();
+        DocumentReference convRef = db.collection("conversions").document();
+        String conversionId = "CLAIM_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
+
+        ConversionModel conv = new ConversionModel();
+        conv.setConversionId(conversionId);
+        conv.setClickId(validClickId);
+        conv.setUserId(uid);
+        conv.setOfferId(offerId);
+        conv.setEvent("MANUAL_CLAIM");
+        conv.setExternalReference(proofText != null && !proofText.trim().isEmpty() ? proofText.trim() : ("CLAIM_" + uid));
+        conv.setStatus("PENDING");
+        conv.setRewardCoins(offer.getRewardCoins());
+        conv.setCreatedAt(now);
+        conv.setProofText(proofText != null ? proofText.trim() : "");
+        conv.setReferralCodeUsed(referralCodeUsed != null && !referralCodeUsed.trim().isEmpty() ? referralCodeUsed.trim() : offer.getReferralCode());
+
+        Map<String, String> meta = new HashMap<>();
+        meta.put("proofText", conv.getProofText());
+        meta.put("referralCodeUsed", conv.getReferralCodeUsed() != null ? conv.getReferralCodeUsed() : "");
+        meta.put("submissionType", "MANUAL_CLAIM");
+        meta.put("offerTitle", offer.getTitle() != null ? offer.getTitle() : "");
+        meta.put("offerType", offer.getOfferType() != null ? offer.getOfferType() : "REFERRAL_TASK");
+        conv.setMetadata(meta);
+
+        // Save conversion document
+        db.collection("conversions").document(conversionId).set(conv).get();
+
+        // Update tracking click document
+        try {
+            Map<String, Object> clickUpdates = new HashMap<>();
+            clickUpdates.put("status", "PENDING_CLAIM");
+            clickUpdates.put("conversionId", conversionId);
+            clickUpdates.put("lastClickedAt", now);
+            db.collection("tracking_clicks").document(validClickId).update(clickUpdates).get();
+        } catch (Exception ignored) {}
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", true);
+        res.put("conversionId", conversionId);
+        res.put("status", "PENDING");
+        res.put("rewardCoins", offer.getRewardCoins());
+        res.put("message", "Claim submitted successfully! Coins will be credited once verified by Admin.");
+        return res;
     }
 
     public Map<String, Object> processConversion(

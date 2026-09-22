@@ -77,7 +77,10 @@ public class ShareEarnController {
                 baseUrl = scheme + "://" + serverName + ":" + serverPort;
             }
 
-            Map<String, Object> trackingResult = shareEarnService.createClickTracking(uid, offerId, baseUrl);
+            String ipAddress = extractClientIp(httpRequest);
+            String userAgent = httpRequest.getHeader("User-Agent");
+
+            Map<String, Object> trackingResult = shareEarnService.createClickTracking(uid, offerId, baseUrl, ipAddress, userAgent);
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", trackingResult);
@@ -88,6 +91,33 @@ public class ShareEarnController {
             return ResponseEntity.badRequest().body(buildError("BAD_REQUEST", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(buildError("TRACKING_FAILED", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/offers/{offerId}/claim")
+    public ResponseEntity<?> submitOfferClaim(
+            @RequestHeader("Authorization") String token,
+            @PathVariable("offerId") String offerId,
+            @RequestBody Map<String, Object> req
+    ) {
+        try {
+            String uid = TokenUtil.verify(token);
+            String clickId = req.get("clickId") != null ? req.get("clickId").toString() : null;
+            String proofText = req.get("proofText") != null ? req.get("proofText").toString() : null;
+            String referralCodeUsed = req.get("referralCodeUsed") != null ? req.get("referralCodeUsed").toString() : null;
+
+            Map<String, Object> result = shareEarnService.submitOfferClaim(uid, offerId, clickId, proofText, referralCodeUsed);
+            Boolean success = (Boolean) result.get("success");
+            if (Boolean.FALSE.equals(success)) {
+                return ResponseEntity.badRequest().body(result);
+            }
+            return ResponseEntity.ok(result);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(401).body(buildError("UNAUTHORIZED", e.getMessage()));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(buildError("CLAIM_ERROR", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(buildError("CLAIM_FAILED", e.getMessage()));
         }
     }
 
@@ -128,6 +158,18 @@ public class ShareEarnController {
         } catch (Exception e) {
             return ResponseEntity.status(401).body(buildError("UNAUTHORIZED", e.getMessage()));
         }
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.trim().isEmpty() && !"unknown".equalsIgnoreCase(xForwardedFor)) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.trim().isEmpty() && !"unknown".equalsIgnoreCase(xRealIp)) {
+            return xRealIp.trim();
+        }
+        return request.getRemoteAddr();
     }
 
     private Map<String, Object> buildError(String code, String message) {
