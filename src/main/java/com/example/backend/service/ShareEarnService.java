@@ -269,9 +269,18 @@ public class ShareEarnService {
             destUrl = "https://" + destUrl;
         }
 
-        // Prevent self-referential redirect loops
-        if (destUrl.contains("/r/" + cleanId) || destUrl.contains("/track/" + cleanId)) {
-            throw new IllegalArgumentException("Destination URL points to its own tracking link");
+        // Guard against accidental Admin Dashboard URLs or recursive tracking links
+        if (destUrl.contains("appdashboard") || destUrl.contains("vercel.app") || destUrl.contains("/admin") || destUrl.contains("/r/") || destUrl.contains("/track/")) {
+            String title = offerDoc.getString("title");
+            if (title != null && (title.toLowerCase().contains("gpay") || title.toLowerCase().contains("google pay"))) {
+                destUrl = "https://play.google.com/store/apps/details?id=com.google.android.apps.nbu.paisa.user";
+            } else if (title != null && title.toLowerCase().contains("phonepe")) {
+                destUrl = "https://play.google.com/store/apps/details?id=com.phonepe.app";
+            } else if (title != null && title.toLowerCase().contains("upstox")) {
+                destUrl = "https://upstox.com/open-demat-account/";
+            } else {
+                destUrl = "https://play.google.com/store/apps/details?id=com.app.rewardsplanet";
+            }
         }
 
         // Macro expansion for partner tracking URLs
