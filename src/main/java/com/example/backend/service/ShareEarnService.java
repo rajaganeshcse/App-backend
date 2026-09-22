@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
@@ -24,10 +23,8 @@ public class ShareEarnService {
 
     public List<OfferModel> getActiveOffers(String category, String search) throws ExecutionException, InterruptedException {
         Firestore db = FirestoreClient.getFirestore();
-        Query query = db.collection("offers").whereEqualTo("status", "ACTIVE");
-
-        ApiFuture<QuerySnapshot> future = query.get();
-        List<QueryDocumentSnapshot> docs = future.get().getDocuments();
+        // Fetch all offers and filter active ones cleanly to handle any casing
+        List<QueryDocumentSnapshot> docs = db.collection("offers").get().get().getDocuments();
 
         List<OfferModel> offers = new ArrayList<>();
         long now = System.currentTimeMillis();
@@ -36,6 +33,12 @@ public class ShareEarnService {
             OfferModel offer = doc.toObject(OfferModel.class);
             if (offer.getOfferId() == null) {
                 offer.setOfferId(doc.getId());
+            }
+
+            // Status check (Default to ACTIVE if null)
+            String status = offer.getStatus();
+            if (status != null && "INACTIVE".equalsIgnoreCase(status.trim())) {
+                continue;
             }
 
             // Date validation
@@ -47,7 +50,7 @@ public class ShareEarnService {
             }
 
             // Category filter
-            if (category != null && !category.trim().isEmpty() && !"All".equalsIgnoreCase(category)) {
+            if (category != null && !category.trim().isEmpty() && !"All".equalsIgnoreCase(category.trim())) {
                 if (offer.getCategory() == null || !offer.getCategory().equalsIgnoreCase(category.trim())) {
                     continue;
                 }
@@ -95,7 +98,7 @@ public class ShareEarnService {
         }
 
         OfferModel offer = offerDoc.toObject(OfferModel.class);
-        if (offer == null || !"ACTIVE".equalsIgnoreCase(offer.getStatus())) {
+        if (offer == null || "INACTIVE".equalsIgnoreCase(offer.getStatus())) {
             throw new IllegalArgumentException("Offer is not active");
         }
 
@@ -165,7 +168,7 @@ public class ShareEarnService {
         }
 
         OfferModel offer = offerDoc.toObject(OfferModel.class);
-        if (offer == null || !"ACTIVE".equalsIgnoreCase(offer.getStatus())) {
+        if (offer == null || "INACTIVE".equalsIgnoreCase(offer.getStatus())) {
             throw new IllegalArgumentException("Offer is no longer active");
         }
 
@@ -181,8 +184,14 @@ public class ShareEarnService {
 
         String destUrl = offer.getDestinationUrl().trim();
 
-        // Pass clickId as query parameter if not present
-        if (!destUrl.contains("click_id=") && !destUrl.contains("clickId=")) {
+        // Macro expansion for partner tracking URLs
+        if (destUrl.contains("{click_id}") || destUrl.contains("{clickId}") || destUrl.contains("{sub_id}") || destUrl.contains("{subid}") || destUrl.contains("{click}")) {
+            destUrl = destUrl.replace("{click_id}", clickId)
+                             .replace("{clickId}", clickId)
+                             .replace("{sub_id}", clickId)
+                             .replace("{subid}", clickId)
+                             .replace("{click}", clickId);
+        } else if (!destUrl.contains("click_id=") && !destUrl.contains("clickId=")) {
             if (destUrl.contains("?")) {
                 destUrl += "&click_id=" + clickId;
             } else {
@@ -309,7 +318,8 @@ public class ShareEarnService {
             transaction.update(clickRef, "status", "CONVERTED");
             transaction.update(clickRef, "conversionId", conversionId);
 
-            // 4. Add coin details transaction log to existing user wallet
+            // 4. Atomic transaction set for coin details transaction log
+            DocumentReference coinDetailRef = db.collection("users").document(uid).collection("coinDetails").document();
             Map<String, Object> coinDetail = new HashMap<>();
             coinDetail.put("amount", rewardCoins);
             coinDetail.put("type", "Share & Earn (" + offer.getTitle() + ")");
@@ -320,7 +330,7 @@ public class ShareEarnService {
             coinDetail.put("offerId", click.getOfferId());
             coinDetail.put("created_at", FieldValue.serverTimestamp());
 
-            db.collection("users").document(uid).collection("coinDetails").add(coinDetail);
+            transaction.set(coinDetailRef, coinDetail);
 
             // FCM Notification if available
             String fcmToken = userSnap.getString("fcmToken");
