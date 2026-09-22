@@ -13,7 +13,7 @@ public class DailyNotificationSettings {
     private int minute = 0;
     private String timezone = "Asia/Kolkata";
     private String title = "🎁 Your Daily Rewards Are Ready!";
-    private String message = "Claim your daily bonus, play games, complete tasks and start earning today.";
+    private String message = "Claim your daily bonus, complete tasks, and start earning today.";
     private String imageUrl = "";
     private String screen = "DAILY_BONUS";
     private String updatedAt;
