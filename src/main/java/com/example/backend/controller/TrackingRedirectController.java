@@ -20,20 +20,30 @@ public class TrackingRedirectController {
     @Autowired
     private ShareEarnService shareEarnService;
 
+    /** Generic tracking redirect — canonical route: /r/{trackingId} */
+    @GetMapping("/r/{trackingId}")
+    public ResponseEntity<?> handleGenericRedirect(
+            @PathVariable("trackingId") String trackingId,
+            HttpServletRequest request) {
+        return processRedirect(trackingId, request);
+    }
+
+    /** Legacy route kept for backward compatibility: /track/{clickId} */
     @GetMapping("/track/{clickId}")
     public ResponseEntity<?> handleTrackingRedirect(
             @PathVariable("clickId") String clickId,
-            HttpServletRequest request
-    ) {
+            HttpServletRequest request) {
+        return processRedirect(clickId, request);
+    }
+
+    private ResponseEntity<?> processRedirect(String clickId, HttpServletRequest request) {
         try {
             String ipAddress = extractClientIp(request);
             String userAgent = request.getHeader("User-Agent");
             String trustedDestinationUrl = shareEarnService.handleRedirect(clickId, ipAddress, userAgent);
-
             HttpHeaders headers = new HttpHeaders();
             headers.setLocation(URI.create(trustedDestinationUrl));
-            return new ResponseEntity<>(headers, HttpStatus.FOUND); // 302 Redirect
-
+            return new ResponseEntity<>(headers, HttpStatus.FOUND);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("<html><body><h2>Link Error</h2><p>" + e.getMessage() + "</p></body></html>");

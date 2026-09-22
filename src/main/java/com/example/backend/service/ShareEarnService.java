@@ -157,7 +157,7 @@ public class ShareEarnService {
             trackingDomain = trackingDomain.substring(0, trackingDomain.length() - 1);
         }
 
-        String trackingUrl = trackingDomain + "/track/" + clickId;
+        String trackingUrl = trackingDomain + "/r/" + clickId;
 
         Map<String, Object> res = new HashMap<>();
         res.put("clickId", clickId);
