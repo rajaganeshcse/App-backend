@@ -339,11 +339,26 @@ public class ShareEarnAdminService {
             }
         }
 
+        int totalInstalls = 0;
+        int totalRegistrations = 0;
+        for (QueryDocumentSnapshot doc : clickDocs) {
+            if (doc.contains("installedAt") && doc.get("installedAt") != null) {
+                totalInstalls++;
+            }
+            if (doc.contains("registeredAt") && doc.get("registeredAt") != null) {
+                totalRegistrations++;
+            }
+        }
+
         double conversionRate = totalClicks > 0 ? ((double) approvedConversions / totalClicks) * 100.0 : 0.0;
+        double installRate = totalClicks > 0 ? ((double) totalInstalls / totalClicks) * 100.0 : 0.0;
+        double registrationRate = totalInstalls > 0 ? ((double) totalRegistrations / totalInstalls) * 100.0 : 0.0;
 
         Map<String, Object> reports = new HashMap<>();
         reports.put("totalOffers", totalOffers);
         reports.put("totalClicks", totalClicks);
+        reports.put("totalInstalls", totalInstalls);
+        reports.put("totalRegistrations", totalRegistrations);
         reports.put("totalConversions", totalConversions);
         reports.put("approvedConversions", approvedConversions);
         reports.put("pendingConversions", pendingConversions);
@@ -351,6 +366,8 @@ public class ShareEarnAdminService {
         reports.put("reversedConversions", reversedConversions);
         reports.put("totalRewardedCoins", totalRewardedCoins);
         reports.put("conversionRate", Math.round(conversionRate * 100.0) / 100.0);
+        reports.put("installRate", Math.round(installRate * 100.0) / 100.0);
+        reports.put("registrationRate", Math.round(registrationRate * 100.0) / 100.0);
         return reports;
     }
 

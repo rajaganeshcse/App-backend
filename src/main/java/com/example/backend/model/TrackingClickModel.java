@@ -20,6 +20,13 @@ public class TrackingClickModel {
     private String deviceInfo;
     private Long lastClickedAt;
 
+    // Attribution fields
+    private Long installedAt;
+    private String installAttributionId;
+    private Long registeredAt;
+    private String registeredUid;
+    private String registrationAttributionId;
+
     public TrackingClickModel() {}
 
     public String getClickId() { return clickId; }
@@ -70,4 +77,19 @@ public class TrackingClickModel {
 
     public Long getLastClickedAt() { return lastClickedAt; }
     public void setLastClickedAt(Long lastClickedAt) { this.lastClickedAt = lastClickedAt; }
+
+    public Long getInstalledAt() { return installedAt; }
+    public void setInstalledAt(Long installedAt) { this.installedAt = installedAt; }
+
+    public String getInstallAttributionId() { return installAttributionId; }
+    public void setInstallAttributionId(String installAttributionId) { this.installAttributionId = installAttributionId; }
+
+    public Long getRegisteredAt() { return registeredAt; }
+    public void setRegisteredAt(Long registeredAt) { this.registeredAt = registeredAt; }
+
+    public String getRegisteredUid() { return registeredUid; }
+    public void setRegisteredUid(String registeredUid) { this.registeredUid = registeredUid; }
+
+    public String getRegistrationAttributionId() { return registrationAttributionId; }
+    public void setRegistrationAttributionId(String registrationAttributionId) { this.registrationAttributionId = registrationAttributionId; }
 }

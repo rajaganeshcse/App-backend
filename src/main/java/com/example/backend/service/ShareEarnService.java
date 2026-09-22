@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -296,6 +297,19 @@ public class ShareEarnService {
             } else {
                 destUrl += "?click_id=" + clickId;
             }
+        }
+
+        // Google Play Store Referrer enrichment:
+        // Google Play Store delivers the 'referrer' parameter to the app upon install via Play Install Referrer API.
+        if (destUrl.contains("play.google.com")) {
+            try {
+                String playReferrerParam = "click_id=" + clickId;
+                if (destUrl.contains("referrer=")) {
+                    destUrl = destUrl.replace("referrer=", "referrer=" + URLEncoder.encode(playReferrerParam + "&", StandardCharsets.UTF_8.name()));
+                } else {
+                    destUrl += (destUrl.contains("?") ? "&" : "?") + "referrer=" + URLEncoder.encode(playReferrerParam, StandardCharsets.UTF_8.name());
+                }
+            } catch (Exception ignored) {}
         }
 
         return destUrl;

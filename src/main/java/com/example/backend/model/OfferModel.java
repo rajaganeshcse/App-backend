@@ -28,6 +28,10 @@ public class OfferModel {
     private boolean proofRequired;
     private String proofLabel; // e.g. "Enter your GPay registered mobile number or UPI reference"
 
+    // Funnel attribution metrics
+    private long totalInstalls;
+    private long totalRegistrations;
+
     public OfferModel() {}
 
     public String getOfferId() { return offerId; }
@@ -95,4 +99,10 @@ public class OfferModel {
 
     public String getProofLabel() { return proofLabel; }
     public void setProofLabel(String proofLabel) { this.proofLabel = proofLabel; }
+
+    public long getTotalInstalls() { return totalInstalls; }
+    public void setTotalInstalls(long totalInstalls) { this.totalInstalls = totalInstalls; }
+
+    public long getTotalRegistrations() { return totalRegistrations; }
+    public void setTotalRegistrations(long totalRegistrations) { this.totalRegistrations = totalRegistrations; }
 }
