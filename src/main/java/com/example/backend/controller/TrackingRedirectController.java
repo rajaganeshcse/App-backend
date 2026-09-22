@@ -41,15 +41,54 @@ public class TrackingRedirectController {
             String ipAddress = extractClientIp(request);
             String userAgent = request.getHeader("User-Agent");
             String trustedDestinationUrl = shareEarnService.handleRedirect(clickId, ipAddress, userAgent);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setLocation(URI.create(trustedDestinationUrl));
-            return new ResponseEntity<>(headers, HttpStatus.FOUND);
+
+            try {
+                String sanitizedUrl = trustedDestinationUrl.trim().replace(" ", "%20");
+                URI uri = URI.create(sanitizedUrl);
+                HttpHeaders headers = new HttpHeaders();
+                headers.setLocation(uri);
+                return new ResponseEntity<>(headers, HttpStatus.FOUND);
+            } catch (Exception uriEx) {
+                // Robust Fallback: HTML + JavaScript Instant Redirect
+                String html = "<!DOCTYPE html><html><head>"
+                        + "<meta http-equiv=\"refresh\" content=\"0;url=" + trustedDestinationUrl + "\">"
+                        + "<title>Redirecting...</title></head>"
+                        + "<body style=\"font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:60px 20px;background:#f8fafc;color:#1e293b;\">"
+                        + "<div style=\"max-width:480px;margin:0 auto;background:#fff;padding:32px;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.06);\">"
+                        + "<h2 style=\"margin-top:0;color:#4f46e5;\">Redirecting to Offer...</h2>"
+                        + "<p style=\"color:#64748b;\">If you are not redirected automatically within 3 seconds, please tap the button below:</p>"
+                        + "<a href=\"" + trustedDestinationUrl + "\" style=\"display:inline-block;padding:12px 24px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-top:12px;\">Continue to Offer ➔</a>"
+                        + "</div>"
+                        + "<script>window.location.replace(\"" + trustedDestinationUrl.replace("\"", "\\\"") + "\");</script>"
+                        + "</body></html>";
+                HttpHeaders htmlHeaders = new HttpHeaders();
+                htmlHeaders.set("Content-Type", "text/html; charset=UTF-8");
+                return new ResponseEntity<>(html, htmlHeaders, HttpStatus.OK);
+            }
+
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body("<html><body><h2>Link Error</h2><p>" + e.getMessage() + "</p></body></html>");
+            String errHtml = "<!DOCTYPE html><html><head><title>Link Error</title></head>"
+                    + "<body style=\"font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:60px 20px;background:#0f172a;color:#f8fafc;\">"
+                    + "<div style=\"max-width:440px;margin:0 auto;background:#1e293b;padding:32px;border-radius:16px;border:1px solid #334155;\">"
+                    + "<div style=\"font-size:40px;\">⚠️</div>"
+                    + "<h2 style=\"color:#f87171;margin:12px 0;\">Link Notice</h2>"
+                    + "<p style=\"color:#94a3b8;line-height:1.5;\">" + e.getMessage() + "</p>"
+                    + "<p style=\"font-size:12px;color:#64748b;margin-top:20px;\">RGamer Attribution System</p>"
+                    + "</div></body></html>";
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Content-Type", "text/html; charset=UTF-8");
+            return new ResponseEntity<>(errHtml, headers, HttpStatus.BAD_REQUEST);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("<html><body><h2>Server Error</h2><p>Unable to process tracking redirect.</p></body></html>");
+            String errHtml = "<!DOCTYPE html><html><head><title>Server Notice</title></head>"
+                    + "<body style=\"font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:60px 20px;background:#0f172a;color:#f8fafc;\">"
+                    + "<div style=\"max-width:440px;margin:0 auto;background:#1e293b;padding:32px;border-radius:16px;border:1px solid #334155;\">"
+                    + "<div style=\"font-size:40px;\">⏳</div>"
+                    + "<h2 style=\"color:#38bdf8;margin:12px 0;\">Service Notice</h2>"
+                    + "<p style=\"color:#94a3b8;line-height:1.5;\">Unable to process redirect at this moment. Please try again shortly.</p>"
+                    + "</div></body></html>";
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Content-Type", "text/html; charset=UTF-8");
+            return new ResponseEntity<>(errHtml, headers, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
