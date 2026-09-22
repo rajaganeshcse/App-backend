@@ -31,7 +31,13 @@ public class ShareEarnService {
         long now = System.currentTimeMillis();
 
         for (QueryDocumentSnapshot doc : docs) {
-            OfferModel offer = doc.toObject(OfferModel.class);
+            OfferModel offer;
+            try {
+                offer = doc.toObject(OfferModel.class);
+            } catch (Exception e) {
+                continue;
+            }
+            if (offer == null) continue;
             if (offer.getOfferId() == null) {
                 offer.setOfferId(doc.getId());
             }
