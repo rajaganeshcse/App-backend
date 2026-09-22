@@ -163,6 +163,27 @@ public class ShareEarnService {
 
         String trackingUrl = trackingDomain + "/r/" + clickId;
 
+        // FCM notification for offer link generation / click
+        if (notificationService != null && uid != null && !"DIRECT_VISITOR".equals(uid)) {
+            try {
+                DocumentSnapshot uDoc = db.collection("users").document(uid).get().get();
+                if (uDoc.exists()) {
+                    String fcmToken = uDoc.getString("fcmToken");
+                    if (fcmToken != null && !fcmToken.isEmpty()) {
+                        String title = offer.getTitle() != null ? offer.getTitle() : "Offer";
+                        long coins = offer.getRewardCoins();
+                        notificationService.sendToUser(
+                                fcmToken,
+                                "Offer Link Activated 🚀",
+                                "You started " + title + "! Complete the steps to earn +" + coins + " coins.",
+                                "OFFER_HISTORY",
+                                "SHARE_EARN"
+                        );
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
         Map<String, Object> res = new HashMap<>();
         res.put("clickId", clickId);
         res.put("trackingUrl", trackingUrl);
@@ -431,6 +452,27 @@ public class ShareEarnService {
             db.collection("tracking_clicks").document(validClickId).update(clickUpdates).get();
         } catch (Exception ignored) {}
 
+        // FCM Push Notification for Claim Submission (Pending Verification)
+        if (notificationService != null && uid != null) {
+            try {
+                DocumentSnapshot uDoc = db.collection("users").document(uid).get().get();
+                if (uDoc.exists()) {
+                    String fcmToken = uDoc.getString("fcmToken");
+                    if (fcmToken != null && !fcmToken.isEmpty()) {
+                        String title = offer.getTitle() != null ? offer.getTitle() : "Offer";
+                        long coins = offer.getRewardCoins();
+                        notificationService.sendToUser(
+                                fcmToken,
+                                "Claim Submitted ⏳",
+                                "Your claim for " + title + " has been submitted! +" + coins + " coins will be credited once verified.",
+                                "OFFER_HISTORY",
+                                "SHARE_EARN"
+                        );
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
         Map<String, Object> res = new HashMap<>();
         res.put("success", true);
         res.put("conversionId", conversionId);
@@ -574,11 +616,12 @@ public class ShareEarnService {
             String fcmToken = userSnap.getString("fcmToken");
             if (fcmToken != null && !fcmToken.isEmpty() && notificationService != null) {
                 try {
-                    notificationService.send(
+                    notificationService.sendToUser(
                             fcmToken,
-                            "Coins Credited! 🎉",
-                            "You earned " + rewardCoins + " coins for completing " + offer.getTitle() + "!",
-                            "+" + rewardCoins + " Coins"
+                            "Reward Credited! 🎉",
+                            "Woohoo! +" + rewardCoins + " coins have been added to your wallet for completing " + offer.getTitle() + "!",
+                            "OFFER_HISTORY",
+                            "SHARE_EARN"
                     );
                 } catch (Exception ignored) {}
             }

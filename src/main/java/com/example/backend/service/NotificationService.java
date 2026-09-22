@@ -112,6 +112,46 @@ public class NotificationService implements InitializingBean {
         FirebaseMessaging.getInstance().send(message);
     }
 
+    public void sendToUser(String token, String title, String body, String screen, String notificationType) {
+        if (token == null || token.trim().isEmpty()) return;
+        try {
+            Map<String, String> data = new HashMap<>();
+            data.put("title", title != null ? title : "Rewards Planet 🌟");
+            data.put("message", body != null ? body : "");
+            data.put("body", body != null ? body : "");
+            data.put("screen", screen != null ? screen : "SHARE_EARN");
+            data.put("notification_screen", screen != null ? screen : "SHARE_EARN");
+            data.put("notificationType", notificationType != null ? notificationType : "SHARE_EARN");
+
+            Notification notification = Notification.builder()
+                    .setTitle(title != null ? title : "Rewards Planet 🌟")
+                    .setBody(body != null ? body : "")
+                    .build();
+
+            AndroidNotification androidNotification = AndroidNotification.builder()
+                    .setTitle(title != null ? title : "Rewards Planet 🌟")
+                    .setBody(body != null ? body : "")
+                    .setChannelId("earning_notifications")
+                    .setSound("default")
+                    .build();
+
+            Message message = Message.builder()
+                    .setToken(token)
+                    .putAllData(data)
+                    .setNotification(notification)
+                    .setAndroidConfig(AndroidConfig.builder()
+                            .setPriority(AndroidConfig.Priority.HIGH)
+                            .setNotification(androidNotification)
+                            .build())
+                    .build();
+
+            FirebaseMessaging.getInstance().send(message);
+            System.out.println("📬 Targeted FCM dispatched to token: " + token.substring(0, Math.min(10, token.length())) + "... [" + title + "]");
+        } catch (Exception e) {
+            System.err.println("⚠️ sendToUser FCM dispatch failed: " + e.getMessage());
+        }
+    }
+
     public NotificationRecord sendNotification(NotificationSendRequest request) {
         String notificationId = "notif_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 6);
         return sendNotificationWithId(notificationId, request);

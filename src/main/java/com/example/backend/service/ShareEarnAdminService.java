@@ -191,11 +191,12 @@ public class ShareEarnAdminService {
                 String fcmToken = userSnap.getString("fcmToken");
                 if (fcmToken != null && !fcmToken.isEmpty() && notificationService != null) {
                     try {
-                        notificationService.send(
+                        notificationService.sendToUser(
                                 fcmToken,
-                                "Reward Approved! 🎉",
-                                "Your claim has been approved! " + rewardCoins + " coins added to your wallet.",
-                                "+" + rewardCoins + " Coins"
+                                "Claim Approved! 🎉",
+                                "Congratulations! Your offer claim was approved. +" + rewardCoins + " coins have been credited to your wallet.",
+                                "OFFER_HISTORY",
+                                "SHARE_EARN"
                         );
                     } catch (Exception ignored) {}
                 }
@@ -230,11 +231,12 @@ public class ShareEarnAdminService {
                 if (userSnap.exists()) {
                     String fcmToken = userSnap.getString("fcmToken");
                     if (fcmToken != null && !fcmToken.isEmpty() && notificationService != null) {
-                        notificationService.send(
+                        notificationService.sendToUser(
                                 fcmToken,
-                                "Offer Claim Update",
-                                "Your claim was not approved: " + (reason != null ? reason : "Verification incomplete"),
-                                "Claim Rejected"
+                                "Claim Update ⚠️",
+                                "Your claim could not be approved: " + (reason != null && !reason.trim().isEmpty() ? reason.trim() : "Verification criteria not met") + ".",
+                                "OFFER_HISTORY",
+                                "SHARE_EARN"
                         );
                     }
                 }
