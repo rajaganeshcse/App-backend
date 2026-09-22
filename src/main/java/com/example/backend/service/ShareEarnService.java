@@ -102,15 +102,18 @@ public class ShareEarnService {
         }
 
         OfferModel offer = offerDoc.toObject(OfferModel.class);
-        if (offer == null || "INACTIVE".equalsIgnoreCase(offer.getStatus())) {
-            throw new IllegalArgumentException("Offer is not active");
+        String offerStatus = offerDoc.getString("status");
+        if (offerStatus != null && "INACTIVE".equalsIgnoreCase(offerStatus.trim())) {
+            throw new IllegalArgumentException("Offer is currently inactive");
         }
 
         long now = System.currentTimeMillis();
-        if (offer.getStartDate() != null && offer.getStartDate() > now) {
+        Long sDate = offerDoc.getLong("startDate");
+        Long eDate = offerDoc.getLong("endDate");
+        if (sDate != null && sDate > now) {
             throw new IllegalArgumentException("Offer has not started yet");
         }
-        if (offer.getEndDate() != null && offer.getEndDate() < now) {
+        if (eDate != null && eDate < now) {
             throw new IllegalArgumentException("Offer has expired");
         }
 
@@ -255,20 +258,20 @@ public class ShareEarnService {
             throw new IllegalArgumentException("Associated offer no longer exists");
         }
 
-        OfferModel offer = offerDoc.toObject(OfferModel.class);
-        if (offer == null || "INACTIVE".equalsIgnoreCase(offer.getStatus())) {
-            throw new IllegalArgumentException("Offer is no longer active");
-        }
-
-        if (offer.getDestinationUrl() == null || offer.getDestinationUrl().trim().isEmpty()) {
+        String destUrl = offerDoc.getString("destinationUrl");
+        if (destUrl == null || destUrl.trim().isEmpty()) {
             throw new IllegalArgumentException("Destination URL not configured for this offer");
         }
-
-        String destUrl = offer.getDestinationUrl().trim();
+        destUrl = destUrl.trim();
 
         // Enforce scheme (prevents browser from treating destination as relative URL and looping back)
         if (!destUrl.startsWith("http://") && !destUrl.startsWith("https://")) {
             destUrl = "https://" + destUrl;
+        }
+
+        // Prevent self-referential redirect loops
+        if (destUrl.contains("/r/" + cleanId) || destUrl.contains("/track/" + cleanId)) {
+            throw new IllegalArgumentException("Destination URL points to its own tracking link");
         }
 
         // Macro expansion for partner tracking URLs
