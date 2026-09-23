@@ -73,7 +73,7 @@ public class TrackingRedirectController {
                     + "<div style=\"font-size:40px;\">⚠️</div>"
                     + "<h2 style=\"color:#f87171;margin:12px 0;\">Link Notice</h2>"
                     + "<p style=\"color:#94a3b8;line-height:1.5;\">" + e.getMessage() + "</p>"
-                    + "<p style=\"font-size:12px;color:#64748b;margin-top:20px;\">RGamer Attribution System</p>"
+                    + "<p style=\"font-size:12px;color:#64748b;margin-top:20px;\">DailyKash Attribution System</p>"
                     + "</div></body></html>";
             HttpHeaders headers = new HttpHeaders();
             headers.set("Content-Type", "text/html; charset=UTF-8");
