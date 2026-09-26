@@ -37,7 +37,22 @@ public class AuthController {
     public ResponseEntity<?> auth(@RequestBody LoginRequest request) {
 
         try {
-            FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(request.token);
+            if (request == null || request.token == null || request.token.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body("Token is required");
+            }
+
+            String token = request.token.trim();
+            if (token.startsWith("Bearer ")) {
+                token = token.substring(7).trim();
+            }
+
+            FirebaseToken decoded;
+            try {
+                decoded = FirebaseAuth.getInstance().verifyIdToken(token);
+            } catch (Exception e) {
+                System.err.println("❌ Auth token verification failed: " + e.getMessage());
+                return ResponseEntity.status(401).body("Invalid or expired token");
+            }
 
             String uid = decoded.getUid();
             String name = decoded.getName() != null ? decoded.getName() : "";
@@ -86,9 +101,6 @@ public class AuthController {
                 user.put("created_at", FieldValue.serverTimestamp());
                 user.put("loginTime", FieldValue.serverTimestamp());
 
-                // ✅ SAVE NEW USER
-                ref.set(user);
-
                 // ✅ COIN HISTORY
                 Map<String, Object> coinDetail = new HashMap<>();
                 coinDetail.put("amount", 100);
@@ -96,8 +108,6 @@ public class AuthController {
                 coinDetail.put("status", "Credit");
                 coinDetail.put("istype", "coin");
                 coinDetail.put("created_at", FieldValue.serverTimestamp());
-
-                ref.collection("coinDetails").add(coinDetail);
 
                 // ✅ TICKET HISTORY
                 Map<String, Object> ticketDetail = new HashMap<>();
@@ -107,7 +117,12 @@ public class AuthController {
                 ticketDetail.put("istype", "token");
                 ticketDetail.put("created_at", FieldValue.serverTimestamp());
 
-                ref.collection("coinDetails").add(ticketDetail);
+                // ✅ ATOMIC WRITE: Write user doc + initial coinDetails together and await completion
+                com.google.cloud.firestore.WriteBatch batch = db.batch();
+                batch.set(ref, user);
+                batch.set(ref.collection("coinDetails").document(), coinDetail);
+                batch.set(ref.collection("coinDetails").document(), ticketDetail);
+                batch.commit().get();
 
             } else {
                 // CASE B — EXISTING USER: Check account status first
@@ -131,13 +146,15 @@ public class AuthController {
                 if (!email.isEmpty()) updates.put("email", email);
                 if (!picture.isEmpty()) updates.put("profile_pic", picture);
 
-                ref.update(updates);
+                ref.update(updates).get();
             }
 
             return ResponseEntity.ok("Success");
 
         } catch (Exception e) {
-            return ResponseEntity.status(401).body("Invalid Token");
+            System.err.println("❌ Server error in /api/auth: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Internal error: " + e.getMessage());
         }
     }
 }
